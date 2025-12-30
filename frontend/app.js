@@ -1,11 +1,14 @@
+// Show selected page (Login, News, About, Contacts)
 function showPage(page) {
   document.querySelectorAll('.container > div').forEach(div => div.classList.add('hidden'));
   document.getElementById(page).classList.remove('hidden');
 }
 
+// Show role-based dashboard after login
 function showDashboard() {
   let role = document.getElementById('role').value;
   document.querySelectorAll('[id^="dashboard"]').forEach(div => div.classList.add('hidden'));
+
   if (role) {
     let dashboard = document.getElementById('dashboard-' + role);
     dashboard.classList.remove('hidden');
@@ -17,22 +20,27 @@ function showDashboard() {
   }
 }
 
+// Initialize heatmap visualization
 function initHeatmap() {
-  // Initialize map
-  let map = L.map('map').setView([14.8136, 121.0453], 13); // Example: San Jose del Monte coords
+  // Clear previous map instance if exists
+  if (window.map) {
+    window.map.remove();
+  }
+
+  // Initialize map (default center: San Jose del Monte)
+  window.map = L.map('map').setView([14.8136, 121.0453], 13);
 
   // Add OpenStreetMap tiles
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
-  }).addTo(map);
+  }).addTo(window.map);
 
-  // Example incident data (lat, lng, intensity)
-  let incidents = [
-    [14.8136, 121.0453, 0.8], // Example point
-    [14.8150, 121.0500, 0.6],
-    [14.8200, 121.0400, 0.9]
-  ];
-
-  // Add heatmap layer
-  L.heatLayer(incidents, { radius: 25 }).addTo(map);
+  // Fetch incident data from backend API
+  fetch("https://your-backend.onrender.com/heatmap")  // Replace with your Render backend URL
+    .then(response => response.json())
+    .then(data => {
+      // Example data format: [[lat, lng, intensity], ...]
+      L.heatLayer(data, { radius: 25 }).addTo(window.map);
+    })
+    .catch(error => console.error("Error loading heatmap data:", error));
 }
