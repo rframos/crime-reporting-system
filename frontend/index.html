@@ -3,6 +3,8 @@
 <head>
   <title>Crime Reporting System</title>
   <link rel="stylesheet" href="style.css">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
   <!-- Main Menu -->
@@ -37,6 +39,7 @@
         <li>Generate Reports</li>
         <li>Heat Map Visualization</li>
       </ul>
+      <div id="map"></div>
     </div>
 
     <div id="dashboard-resident" class="hidden">
@@ -54,6 +57,7 @@
         <li>Respond to Incident</li>
         <li>View Heat Map</li>
       </ul>
+      <div id="map"></div>
     </div>
 
     <div id="dashboard-police" class="hidden">
@@ -63,9 +67,13 @@
         <li>Respond to Incident</li>
         <li>View Heat Map</li>
       </ul>
+      <div id="map"></div>
     </div>
   </div>
 
+  <!-- Leaflet + Heatmap.js -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
