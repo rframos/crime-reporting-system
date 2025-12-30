@@ -23,3 +23,8 @@ nav a {
 .hidden {
   display: none;
 }
+
+#map {
+  height: 400px;
+  margin-top: 20px;
+}
