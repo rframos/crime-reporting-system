@@ -5,18 +5,67 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Incident & Crime Reporting</h1>
-  <form>
-    <label>Incident Type:</label>
-    <input type="text" name="type"><br>
-    <label>Description:</label>
-    <textarea name="description"></textarea><br>
-    <label>Location:</label>
-    <input type="text" name="location"><br>
-    <label>Upload Image:</label>
-    <input type="file" name="image"><br>
-    <button type="submit">Submit Report</button>
-  </form>
-  <div id="map"></div>
+  <!-- Main Menu -->
+  <nav>
+    <a href="#" onclick="showPage('login')">Login</a>
+    <a href="#" onclick="showPage('news')">News</a>
+    <a href="#" onclick="showPage('about')">About</a>
+    <a href="#" onclick="showPage('contacts')">Contacts</a>
+  </nav>
+
+  <div class="container">
+    <!-- Login Page -->
+    <div id="login" class="hidden">
+      <h2>Login</h2>
+      <label>Select Account Type:</label>
+      <select id="role" onchange="showDashboard()">
+        <option value="">--Choose--</option>
+        <option value="admin">Admin</option>
+        <option value="resident">Resident</option>
+        <option value="barangay">Barangay Official</option>
+        <option value="police">Police Official</option>
+      </select>
+    </div>
+
+    <!-- Dashboards -->
+    <div id="dashboard-admin" class="hidden">
+      <h2>Admin Dashboard</h2>
+      <ul>
+        <li>Register/Update Account</li>
+        <li>CNN Model</li>
+        <li>Create Incident Database</li>
+        <li>Generate Reports</li>
+        <li>Heat Map Visualization</li>
+      </ul>
+    </div>
+
+    <div id="dashboard-resident" class="hidden">
+      <h2>Resident Dashboard</h2>
+      <ul>
+        <li>Register/Update Account</li>
+        <li>Report Incident</li>
+      </ul>
+    </div>
+
+    <div id="dashboard-barangay" class="hidden">
+      <h2>Barangay Official Dashboard</h2>
+      <ul>
+        <li>Register/Update Account</li>
+        <li>Respond to Incident</li>
+        <li>View Heat Map</li>
+      </ul>
+    </div>
+
+    <div id="dashboard-police" class="hidden">
+      <h2>Police Official Dashboard</h2>
+      <ul>
+        <li>Register/Update Account</li>
+        <li>Respond to Incident</li>
+        <li>View Heat Map</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>
