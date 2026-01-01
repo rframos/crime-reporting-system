@@ -32,7 +32,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='Resident')
+    role = db.Column(db.String(20), default='Resident') # Admin, Police, Official, Resident
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,7 +88,7 @@ def reports():
 @app.route('/heatmap')
 @login_required
 def heatmap():
-    if current_user.role not in ['Admin', 'Police']: return redirect(url_for('index'))
+    if current_user.role not in ['Admin', 'Police', 'Official']: return redirect(url_for('index'))
     return render_template('heatmap.html')
 
 @app.route('/cnn-admin')
@@ -101,11 +101,14 @@ def cnn_admin():
 @app.route('/api/register', methods=['POST'])
 def register():
     try:
+        username = request.form.get('username')
+        if User.query.filter_by(username=username).first():
+            return jsonify({"status": "error", "message": "User already exists"}), 400
         hashed = generate_password_hash(request.form.get('password'))
-        new_user = User(username=request.form.get('username'), password=hashed, role=request.form.get('role'))
+        new_user = User(username=username, password=hashed, role=request.form.get('role'))
         db.session.add(new_user); db.session.commit()
         return jsonify({"status": "success"})
-    except: return jsonify({"status": "error"}), 400
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -117,23 +120,29 @@ def login():
 @app.route('/api/report', methods=['POST'])
 @login_required
 def create_report():
-    img = request.files.get('image')
-    lat, lng = request.form.get('lat'), request.form.get('lng')
-    final_type = request.form.get('type')
-    cat = Category.query.filter_by(name=final_type).first()
-    final_sev = cat.severity if cat else "Low"
-    filename = None
-    if img:
-        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
-        path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        img.save(path)
-        ai_t, ai_s = process_and_classify(path)
-        if ai_t: final_type, final_sev = ai_t, ai_s
-    new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
-                       latitude=float(lat), longitude=float(lng), image_url=filename,
-                       severity=final_sev, user_id=current_user.id)
-    db.session.add(new_inc); db.session.commit()
-    return jsonify({"status": "success"})
+    try:
+        img = request.files.get('image')
+        lat, lng = request.form.get('lat'), request.form.get('lng')
+        if not lat or not lng: return jsonify({"status": "error", "message": "Pin location"}), 400
+        
+        final_type = request.form.get('type')
+        cat = Category.query.filter_by(name=final_type).first()
+        final_sev = cat.severity if cat else "Low"
+        filename = None
+        
+        if img:
+            filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
+            path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            img.save(path)
+            ai_t, ai_s = process_and_classify(path)
+            if ai_t: final_type, final_sev = ai_t, ai_s
+
+        new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
+                        latitude=float(lat), longitude=float(lng), image_url=filename,
+                        severity=final_sev, user_id=current_user.id)
+        db.session.add(new_inc); db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/api/categories', methods=['POST'])
 @login_required
@@ -157,11 +166,16 @@ def logout(): logout_user(); return redirect(url_for('login_page'))
 
 @app.route('/reset-db')
 def reset_db():
-    db.drop_all(); db.create_all()
-    for n, s in [('Theft','Medium'), ('Fire','Critical'), ('Vandalism','Low')]:
-        db.session.add(Category(name=n, severity=s))
-    db.session.commit()
-    return "Database Ready"
+    try:
+        db.session.remove()
+        db.drop_all()
+        db.create_all()
+        for n, s in [('Theft','Medium'), ('Fire','Critical'), ('Vandalism','Low')]:
+            db.session.add(Category(name=n, severity=s))
+        db.session.commit()
+        return "Database Ready! Tables recreated and default categories added."
+    except Exception as e:
+        return f"Error resetting database: {str(e)}"
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
