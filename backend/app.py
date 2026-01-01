@@ -66,6 +66,18 @@ def create_report():
         print(f"DB Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
+# --- TEMPORARY DATABASE RESET ROUTE ---
+# Visit this URL once to fix the "Insert" error: /reset-db
+@app.route('/reset-db')
+def reset_db():
+    try:
+        # This deletes the old table and creates a fresh one with the correct columns
+        db.drop_all()
+        db.create_all()
+        return "Database has been reset! The 'incidents' table is now fresh and ready."
+    except Exception as e:
+        return f"Error resetting database: {str(e)}"
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
