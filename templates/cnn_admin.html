@@ -9,25 +9,18 @@
         .main-content { margin-left: 260px; padding: 40px; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
         .gallery-img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; }
-        .btn-delete-img { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; line-height: 1; }
+        .btn-delete-img { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; }
         .gallery-item { position: relative; }
     </style>
 </head>
 <body>
     {% include 'sidebar.html' %}
-
     <div class="main-content">
         <h2 class="fw-bold mb-4">CNN Intelligence Control</h2>
-
         <div class="row">
             <div class="col-lg-7">
                 <div class="card p-4">
-                    <h5 class="fw-bold mb-3">1. Add Category & Upload</h5>
-                    <form action="/api/admin/add-category" method="POST" class="row g-2 mb-3">
-                        <div class="col-md-6"><input type="text" name="name" class="form-control" placeholder="Category Name" required></div>
-                        <div class="col-md-4"><select name="severity" class="form-select"><option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option><option value="Critical">Critical</option></select></div>
-                        <div class="col-md-2"><button type="submit" class="btn btn-dark w-100">+</button></div>
-                    </form>
+                    <h5 class="fw-bold mb-3">1. Upload Training Data</h5>
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="row g-2">
                             <div class="col-md-5">
@@ -40,30 +33,17 @@
                         </div>
                     </form>
                 </div>
-
                 <div class="card p-4 bg-light text-center">
-                    <h5 class="fw-bold mb-1">2. AI Training Status</h5>
+                    <h5 class="fw-bold">2. Training Control</h5>
                     <div id="statusBadge" class="badge bg-secondary mb-3 p-2">Status: Idle</div>
                     <button onclick="startTraining()" id="trainBtn" class="btn btn-success btn-lg w-100 fw-bold">START TRAINING</button>
-                    <p id="lastRun" class="small text-muted mt-2"></p>
-                </div>
-                
-                <div class="card p-4">
-                    <h5 class="fw-bold">3. Data Tools</h5>
-                    <div class="d-flex gap-2">
-                        <a href="/api/admin/download-dataset" class="btn btn-outline-primary flex-grow-1">Download ZIP</a>
-                        <button onclick="document.getElementById('zipInput').click()" class="btn btn-outline-secondary flex-grow-1">Restore ZIP</button>
-                        <button onclick="triggerReset()" class="btn btn-outline-danger flex-grow-1">FULL RESET</button>
-                    </div>
-                    <input type="file" id="zipInput" style="display:none" onchange="restoreDataset(this)">
                 </div>
             </div>
-
             <div class="col-lg-5">
                 <div class="card p-4">
                     <h5 class="fw-bold mb-3">Dataset Gallery</h5>
                     <select id="gallerySelect" class="form-select mb-3" onchange="loadGallery(this.value)">
-                        <option value="">-- Select Folder --</option>
+                        <option value="">-- View Folder --</option>
                         {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }} ({{ counts[cat.name] or 0 }})</option>{% endfor %}
                     </select>
                     <div id="galleryGrid" class="row g-2" style="max-height: 400px; overflow-y: auto;"></div>
@@ -71,28 +51,14 @@
             </div>
         </div>
     </div>
-
     <script>
         async function checkStatus() {
             const res = await fetch('/api/admin/train-status');
             const data = await res.json();
-            const badge = document.getElementById('statusBadge');
-            const btn = document.getElementById('trainBtn');
-            badge.innerText = "Status: " + data.status;
-            if (data.status.includes("Training")) {
-                badge.className = "badge bg-warning text-dark mb-3 p-2"; btn.disabled = true;
-            } else {
-                badge.className = "badge bg-success mb-3 p-2"; btn.disabled = false;
-            }
+            document.getElementById('statusBadge').innerText = "Status: " + data.status;
         }
         setInterval(checkStatus, 3000);
-
         async function startTraining() { await fetch('/api/admin/train-model', { method: 'POST' }); }
-
-        function triggerReset() {
-            if(confirm("Factory Reset? All data will be wiped.")) { window.location.href = "/reset-db"; }
-        }
-
         async function loadGallery(catName) {
             const grid = document.getElementById('galleryGrid');
             if(!catName) { grid.innerHTML = ''; return; }
@@ -105,7 +71,6 @@
                 </div>
             `).join('');
         }
-
         async function deleteImage(cat, file) {
             if(!confirm("Delete?")) return;
             await fetch('/api/admin/delete-training-image', {
@@ -115,12 +80,6 @@
             });
             loadGallery(cat);
         }
-
-        document.getElementById('uploadForm').onsubmit = async (e) => {
-            e.preventDefault();
-            await fetch('/api/admin/upload-training', { method: 'POST', body: new FormData(e.target) });
-            location.reload();
-        };
     </script>
 </body>
 </html>
