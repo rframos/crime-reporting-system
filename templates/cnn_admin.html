@@ -3,72 +3,83 @@
 <head>
     <title>SafeCity | CNN Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>.main-content { margin-left: 260px; padding: 40px; } .card { border-radius: 15px; border: none; }</style>
+    <style>
+        .main-content { margin-left: 260px; padding: 40px; }
+        .img-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+        .img-container { position: relative; width: 100px; height: 100px; }
+        .img-container img { width: 100%; height: 100%; object-fit: cover; border-radius: 5px; cursor: pointer; }
+        .btn-del { position: absolute; top: 0; right: 0; padding: 2px 5px; font-size: 10px; }
+    </style>
 </head>
 <body class="bg-light">
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <h2 class="fw-bold mb-4">⚙️ CNN Intelligence Management</h2>
+        <h2 class="fw-bold mb-4">⚙️ CNN Admin Panel</h2>
 
-        <div class="row">
-            <div class="col-md-5">
-                <div class="card shadow-sm p-4 mb-4">
-                    <h5 class="fw-bold">Add Incident Type</h5>
+        <div class="row mb-5">
+            <div class="col-md-6">
+                <div class="card p-4 shadow-sm border-0">
+                    <h5 class="fw-bold">Create New Category</h5>
                     <form action="/api/categories" method="POST">
-                        <div class="mb-3"><label>Category Name</label><input type="text" name="name" class="form-control" placeholder="e.g., Robbery" required></div>
-                        <div class="mb-3"><label>Severity Level</label>
+                        <div class="mb-3"><label>Name</label><input type="text" name="name" class="form-control" required></div>
+                        <div class="mb-3">
+                            <label>Severity</label>
                             <select name="severity" class="form-select">
-                                <option value="Low">Low</option>
-                                <option value="Medium">Medium</option>
-                                <option value="High">High</option>
-                                <option value="Critical">Critical</option>
+                                <option value="Low">Low</option><option value="Medium">Medium</option>
+                                <option value="High">High</option><option value="Critical">Critical</option>
                             </select>
                         </div>
-                        <button class="btn btn-primary w-100">Create Category</button>
+                        <button class="btn btn-primary w-100">Add Category</button>
                     </form>
-                </div>
-
-                <div class="card shadow-sm p-4">
-                    <h5 class="fw-bold">Active Model Status</h5>
-                    <div class="d-flex justify-content-between">
-                        <span>Status: <span class="badge bg-success">Online</span></span>
-                        <span>Version: 2026.1.0</span>
-                    </div>
-                    <button class="btn btn-dark mt-3 w-100" onclick="alert('Starting re-training process...')">🚀 Re-Train Model</button>
                 </div>
             </div>
-
-            <div class="col-md-7">
-                <div class="card shadow-sm p-4">
-                    <h5 class="fw-bold">Upload Training Data (CNN)</h5>
-                    <p class="text-muted small">Upload multiple images to a specific category to improve detection accuracy.</p>
-                    <form action="/api/upload-training" method="POST" enctype="multipart/form-data">
-                        <div class="mb-3">
-                            <label>Select Category</label>
-                            <select name="category" class="form-select">
-                                {% for cat in categories %}<option value="{{cat.name}}">{{cat.name}}</option>{% endfor %}
-                            </select>
-                        </div>
-                        <div class="mb-3"><label>Images</label><input type="file" name="images" class="form-control" multiple required></div>
-                        <button class="btn btn-success w-100">Upload to Training Set</button>
-                    </form>
-                    <hr>
-                    <h6 class="fw-bold mt-3">Dataset Statistics</h6>
-                    <table class="table table-sm mt-2">
-                        <thead><tr><th>Category</th><th>Severity</th><th>Images Collected</th></tr></thead>
-                        <tbody>
-                            {% for cat in categories %}
-                            <tr>
-                                <td>{{cat.name}}</td>
-                                <td><span class="badge bg-secondary">{{cat.severity}}</span></td>
-                                <td>{{ counts[cat.name] }} photos</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+            <div class="col-md-6 text-center">
+                <div class="card p-4 shadow-sm border-0 h-100 d-flex flex-column justify-content-center">
+                    <h5 class="fw-bold">Model Production</h5>
+                    <p class="text-muted">Generate a new .h5 model based on the current dataset.</p>
+                    <button class="btn btn-success btn-lg" onclick="trainModel()">🚀 Train & Produce Model</button>
                 </div>
             </div>
         </div>
+
+        <h4 class="fw-bold mb-3">Dataset Management</h4>
+        {% for cat_name, imgs in dataset.items() %}
+        <div class="card p-4 mb-4 border-0 shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0">{{ cat_name }} ({{ imgs|length }} images)</h6>
+                <form action="/api/upload-training" method="POST" enctype="multipart/form-data" class="d-flex gap-2">
+                    <input type="hidden" name="category" value="{{ cat_name }}">
+                    <input type="file" name="images" class="form-control form-control-sm" multiple required>
+                    <button class="btn btn-sm btn-dark">Upload</button>
+                </form>
+            </div>
+            <div class="img-grid">
+                {% for img in imgs %}
+                <div class="img-container" id="img-{{ loop.index }}-{{ cat_name }}">
+                    <img src="/static/training_data/{{ cat_name }}/{{ img }}" onclick="window.open(this.src)">
+                    <button class="btn btn-danger btn-del" onclick="deleteImg('{{cat_name}}', '{{img}}', 'img-{{ loop.index }}-{{ cat_name }}')">X</button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
     </div>
+
+    <script>
+        async function deleteImg(cat, file, elementId) {
+            if(!confirm("Delete this image?")) return;
+            const res = await fetch('/api/delete-training-img', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({category: cat, filename: file})
+            });
+            if(res.ok) document.getElementById(elementId).remove();
+        }
+
+        async function trainModel() {
+            const res = await fetch('/api/train-model', {method: 'POST'});
+            if(res.ok) alert("Training process triggered! Check console for logs.");
+        }
+    </script>
 </body>
 </html>
