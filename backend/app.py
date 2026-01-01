@@ -3,24 +3,20 @@ import datetime
 import numpy as np
 import cv2
 import tensorflow as tf
-import shutil
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, redirect, url_for, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from tensorflow.keras import backend as K
 
+# --- CONFIG ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
-
 app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full'
-app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///local.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -31,7 +27,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='Resident') # Admin, Police, Barangay, Resident
+    role = db.Column(db.String(20), default='Resident') 
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -46,6 +42,12 @@ class Incident(db.Model):
     status = db.Column(db.String(20), default='Pending')
     confidence = db.Column(db.Float, default=0.0) 
     image_url = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
+class Notification(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.String(255))
+    is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 @login_manager.user_loader
@@ -79,18 +81,13 @@ def reports():
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
 
-# --- SYSTEM RESET & NOTIFICATIONS ---
+# --- SYSTEM FEATURES ---
 @app.route('/reset-db')
 def reset_db():
-    """Wipes the database and recreates structure with default categories."""
-    db.drop_all()
-    db.create_all()
-    # Seed default categories
-    theft = Category(name="Theft", severity="Medium")
-    vandalism = Category(name="Vandalism", severity="Low")
-    db.session.add_all([theft, vandalism])
+    db.drop_all(); db.create_all()
+    db.session.add_all([Category(name="Theft", severity="Medium"), Category(name="Vandalism", severity="Low")])
     db.session.commit()
-    return "Database has been reset. All users and reports cleared. Default categories (Theft, Vandalism) added."
+    return "Database Reset Successful."
 
 @app.route('/api/report', methods=['POST'])
 @login_required
@@ -104,24 +101,26 @@ def create_report():
         f_name = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
         img.save(os.path.join(app.config['UPLOAD_FOLDER'], f_name))
 
-    new_inc = Incident(
-        incident_type=final_type,
-        latitude=float(lat),
-        longitude=float(lng),
-        image_url=f_name,
-        confidence=95.0 # Placeholder for testing
-    )
-    db.session.add(new_inc)
-    db.session.commit()
+    new_inc = Incident(incident_type=final_type, latitude=float(lat), longitude=float(lng), image_url=f_name, confidence=95.0)
     
-    # In a real app, this would trigger a WebSocket or Push Notification
-    return jsonify({"status": "success", "message": "Incident reported and officials notified."})
+    # Create Notification for Officials
+    new_notif = Notification(message=f"New {final_type} reported at {lat}, {lng}!")
+    
+    db.session.add(new_inc)
+    db.session.add(new_notif)
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+@app.route('/api/notifications')
+@roles_required('Admin', 'Police', 'Barangay')
+def get_notifications():
+    notifs = Notification.query.order_by(Notification.created_at.desc()).limit(5).all()
+    return jsonify([{"id": n.id, "message": n.message, "time": n.created_at.strftime('%H:%M')} for n in notifs])
 
 # --- AUTH ---
 @app.route('/api/register', methods=['POST'])
 def register():
     uname = request.form.get('username')
-    if User.query.filter_by(username=uname).first(): return jsonify({"status": "error"}), 400
     new_user = User(username=uname, password=generate_password_hash(request.form.get('password')), role=request.form.get('role'))
     db.session.add(new_user); db.session.commit()
     return jsonify({"status": "success"})
