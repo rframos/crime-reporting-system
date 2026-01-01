@@ -1,6 +1,6 @@
 import os
 import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -30,7 +30,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='Resident') # Admin, Official, Resident, Police
+    role = db.Column(db.String(20), default='Resident')
 
 class Incident(db.Model):
     __tablename__ = 'incidents'
@@ -39,7 +39,7 @@ class Incident(db.Model):
     description = db.Column(db.Text)
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
-    status = db.Column(db.String(20), default='Pending') # Pending, Responded, Closed
+    status = db.Column(db.String(20), default='Pending')
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
@@ -47,8 +47,7 @@ class Incident(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- ROUTES ---
-
+# --- PAGE ROUTES ---
 @app.route('/')
 @login_required
 def index():
@@ -60,42 +59,41 @@ def login_page():
         return redirect(url_for('index'))
     return render_template('login.html')
 
+@app.route('/contacts')
+@login_required
+def contacts():
+    return render_template('contacts.html')
+
 @app.route('/heatmap')
 @login_required
 def heatmap():
     if current_user.role not in ['Police', 'Admin']:
-        return "Access Denied", 403
+        return "Unauthorized", 403
     return render_template('heatmap.html')
 
 @app.route('/reports')
 @login_required
 def reports():
     if current_user.role == 'Resident':
-        return "Access Denied", 403
-    incidents = Incident.query.all()
-    return render_template('reports.html', incidents=incidents)
-
-@app.route('/contacts')
-@login_required
-def contacts():
-    return render_template('contacts.html')
+        return "Unauthorized", 403
+    all_incidents = Incident.query.order_by(Incident.created_at.desc()).all()
+    return render_template('reports.html', incidents=all_incidents)
 
 @app.route('/cnn-admin')
 @login_required
 def cnn_admin():
     if current_user.role != 'Admin':
-        return "Access Denied", 403
+        return "Unauthorized", 403
     return render_template('cnn_admin.html')
 
 # --- API ROUTES ---
-
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.form
     if User.query.filter_by(username=data.get('username')).first():
-        return jsonify({"status": "error", "message": "User already exists"}), 400
-    hashed_pw = generate_password_hash(data.get('password'))
-    new_user = User(username=data.get('username'), password=hashed_pw, role=data.get('role', 'Resident'))
+        return jsonify({"status": "error", "message": "User exists"}), 400
+    hashed = generate_password_hash(data.get('password'))
+    new_user = User(username=data.get('username'), password=hashed, role=data.get('role'))
     db.session.add(new_user)
     db.session.commit()
     return jsonify({"status": "success"})
@@ -107,7 +105,7 @@ def login():
     if user and check_password_hash(user.password, data.get('password')):
         login_user(user)
         return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+    return jsonify({"status": "error", "message": "Invalid login"}), 401
 
 @app.route('/logout')
 def logout():
@@ -143,7 +141,7 @@ def create_report():
 def reset_db():
     db.drop_all()
     db.create_all()
-    return "Database Reset Successful!"
+    return "Database Reset!"
 
 if __name__ == '__main__':
     with app.app_context():
