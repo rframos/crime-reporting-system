@@ -1,21 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>SafeCity SJDM | AI Sandbox</title>
+    <title>SafeCity SJDM | AI Test</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .sidebar { height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; }
         .sidebar a { color: #bdc3c7; text-decoration: none; padding: 12px 25px; display: block; }
         .sidebar a.active { background: #3498db; color: white; }
-        .main-content { margin-left: 260px; padding: 40px; }
-        .preview-box { width: 100%; height: 300px; border: 2px dashed #ccc; border-radius: 15px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f8f9fa; }
-        .preview-box img { max-height: 100%; max-width: 100%; }
-        .result-card { display: none; border-radius: 15px; border: none; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .main-content { margin-left: 260px; padding: 30px; }
     </style>
 </head>
 <body>
-
     <div class="sidebar">
         <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
         <a href="/">Map Dashboard</a>
@@ -23,77 +18,25 @@
         <a href="/heatmap">Crime Heatmap</a>
         <a href="/cnn-admin">CNN Management</a>
         <a href="/ai-testing" class="active">AI Sandbox (Test)</a>
-        <a href="/logout" class="text-danger mt-5">Sign Out</a>
+        <a href="/logout" class="text-danger mt-5 p-3">Sign Out</a>
     </div>
 
     <div class="main-content">
-        <h2 class="fw-bold mb-4">AI Prediction Sandbox</h2>
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card p-4 shadow-sm border-0">
-                    <h5 class="mb-3">Upload Image for Detection</h5>
-                    <input type="file" id="imageInput" class="form-control mb-3" accept="image/*">
-                    <div class="preview-box mb-3" id="previewContainer">
-                        <span class="text-muted">Image preview will appear here</span>
-                    </div>
-                    <button id="testBtn" class="btn btn-primary w-100 fw-bold py-2">Analyze Image</button>
-                </div>
-            </div>
-            
-            <div class="col-md-6">
-                <div id="resultCard" class="card result-card p-5 text-center bg-white">
-                    <h6 class="text-muted text-uppercase small fw-bold">AI Analysis Result</h6>
-                    <h1 id="resLabel" class="display-4 fw-bold text-primary my-3">---</h1>
-                    <div id="resSev" class="badge p-3 fs-5 mb-4">---</div>
-                    <p class="text-muted">The model identified this incident based on previously trained patterns.</p>
-                </div>
-                
-                <div id="loading" class="text-center mt-5" style="display: none;">
-                    <div class="spinner-border text-primary" role="status"></div>
-                    <p class="mt-2">AI is processing pixels...</p>
-                </div>
-            </div>
+        <h2>AI Sandbox</h2>
+        <div class="card p-4 shadow-sm mt-4" style="max-width: 500px;">
+            <input type="file" id="aiImage" class="form-control mb-3">
+            <button id="testBtn" class="btn btn-primary">Test AI Classifier</button>
+            <div id="res" class="mt-4 fs-3 fw-bold"></div>
         </div>
     </div>
 
     <script>
-        const imageInput = document.getElementById('imageInput');
-        const preview = document.getElementById('previewContainer');
-        const testBtn = document.getElementById('testBtn');
-
-        imageInput.onchange = evt => {
-            const [file] = imageInput.files;
-            if (file) {
-                preview.innerHTML = `<img src="${URL.createObjectURL(file)}">`;
-            }
-        }
-
-        testBtn.onclick = async () => {
-            const [file] = imageInput.files;
-            if (!file) return alert("Select an image!");
-
-            document.getElementById('resultCard').style.display = 'none';
-            document.getElementById('loading').style.display = 'block';
-
+        document.getElementById('testBtn').onclick = async () => {
             const formData = new FormData();
-            formData.append('image', file);
-
+            formData.append('image', document.getElementById('aiImage').files[0]);
             const res = await fetch('/api/test-ai', { method: 'POST', body: formData });
             const data = await res.json();
-
-            document.getElementById('loading').style.display = 'none';
-
-            if (res.ok) {
-                const card = document.getElementById('resultCard');
-                card.style.display = 'block';
-                document.getElementById('resLabel').innerText = data.prediction;
-                
-                const sevBadge = document.getElementById('resSev');
-                sevBadge.innerText = `Severity: ${data.severity}`;
-                sevBadge.className = data.severity === 'Critical' ? 'badge bg-danger p-3 fs-5 mb-4' : 'badge bg-warning text-dark p-3 fs-5 mb-4';
-            } else {
-                alert(data.message);
-            }
+            document.getElementById('res').innerText = `Prediction: ${data.prediction} (${data.severity})`;
         };
     </script>
 </body>
