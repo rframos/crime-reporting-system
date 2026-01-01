@@ -35,7 +35,7 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login_page'
 
 # Global Status for Training
-training_info = {"status": "Idle", "last_run": None}
+training_info = {"status": "Idle", "last_run": "Never"}
 
 # --- MODELS ---
 class User(UserMixin, db.Model):
@@ -79,7 +79,7 @@ def run_training_task(app_context, categories):
     global training_info
     try:
         with app_context:
-            training_info["status"] = "Processing Data..."
+            training_info["status"] = "Preparing Dataset..."
             K.clear_session()
             X, y = [], []
             for i, cat in enumerate(categories):
@@ -92,13 +92,13 @@ def run_training_task(app_context, categories):
                         y.append(i)
 
             if len(X) < 2:
-                training_info["status"] = "Error: Not enough data"
+                training_info["status"] = "Failed: Need more images"
                 return
 
             X = np.array(X).astype('float32') / 255.0
             y = np.array(y)
 
-            training_info["status"] = "Fitting Neural Network..."
+            training_info["status"] = "Training AI (Fitting)..."
             model = tf.keras.models.Sequential([
                 tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(150, 150, 3)),
                 tf.keras.layers.MaxPooling2D(2,2),
@@ -108,7 +108,7 @@ def run_training_task(app_context, categories):
             ])
             model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
             
-            # epochs set to 5 for faster training on limited resources
+            # Using 5 epochs to keep it fast and prevent timeouts
             model.fit(X, y, epochs=5, batch_size=4, verbose=0)
             model.save(app.config['MODEL_PATH'])
             
@@ -116,21 +116,23 @@ def run_training_task(app_context, categories):
             training_info["status"] = "Success"
             training_info["last_run"] = datetime.datetime.now().strftime("%I:%M %p")
     except Exception as e:
-        training_info["status"] = f"Failed: {str(e)}"
+        training_info["status"] = f"Error: {str(e)}"
+    finally:
+        # Final safety to ensure memory is released
+        K.clear_session()
 
 # --- ADMIN API ---
 @app.route('/api/admin/train-model', methods=['POST'])
 @login_required
 def train_model():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
-    if training_info["status"] in ["Processing Data...", "Fitting Neural Network..."]:
-        return jsonify({"status": "busy", "message": "Training already in progress."})
+    if "Training" in training_info["status"]:
+        return jsonify({"status": "busy", "message": "Already training."})
     
     categories = Category.query.order_by(Category.id).all()
-    # Start background thread
     thread = threading.Thread(target=run_training_task, args=(app.app_context(), categories))
     thread.start()
-    return jsonify({"status": "started", "message": "Training started in background."})
+    return jsonify({"status": "started", "message": "Background training initiated."})
 
 @app.route('/api/admin/train-status')
 @login_required
@@ -156,13 +158,11 @@ def upload_training():
     files = request.files.getlist('images')
     cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat_name)
     os.makedirs(cat_path, exist_ok=True)
-    saved = 0
     for f in files:
         if f and f.filename != '':
             filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{f.filename}")
             f.save(os.path.join(cat_path, filename))
-            saved += 1
-    return jsonify({"status": "success", "message": f"Saved {saved} images."})
+    return jsonify({"status": "success"})
 
 @app.route('/api/admin/gallery/<category_name>')
 @login_required
