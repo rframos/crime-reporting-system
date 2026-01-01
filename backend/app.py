@@ -3,6 +3,7 @@ import datetime
 import numpy as np
 import cv2
 import tensorflow as tf
+import shutil
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, redirect, url_for, abort
 from flask_sqlalchemy import SQLAlchemy
@@ -11,14 +12,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from tensorflow.keras import backend as K
 
-# --- CONFIG ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
+
 app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full'
+app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///local.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
-app.config['MODEL_PATH'] = os.path.join(base_dir, 'crime_model.h5')
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -79,15 +79,50 @@ def reports():
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
 
+# --- SYSTEM RESET & NOTIFICATIONS ---
+@app.route('/reset-db')
+def reset_db():
+    """Wipes the database and recreates structure with default categories."""
+    db.drop_all()
+    db.create_all()
+    # Seed default categories
+    theft = Category(name="Theft", severity="Medium")
+    vandalism = Category(name="Vandalism", severity="Low")
+    db.session.add_all([theft, vandalism])
+    db.session.commit()
+    return "Database has been reset. All users and reports cleared. Default categories (Theft, Vandalism) added."
+
+@app.route('/api/report', methods=['POST'])
+@login_required
+def create_report():
+    img = request.files.get('image')
+    lat, lng = request.form.get('lat'), request.form.get('lng')
+    final_type = request.form.get('type')
+    
+    f_name = None
+    if img:
+        f_name = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
+        img.save(os.path.join(app.config['UPLOAD_FOLDER'], f_name))
+
+    new_inc = Incident(
+        incident_type=final_type,
+        latitude=float(lat),
+        longitude=float(lng),
+        image_url=f_name,
+        confidence=95.0 # Placeholder for testing
+    )
+    db.session.add(new_inc)
+    db.session.commit()
+    
+    # In a real app, this would trigger a WebSocket or Push Notification
+    return jsonify({"status": "success", "message": "Incident reported and officials notified."})
+
+# --- AUTH ---
 @app.route('/api/register', methods=['POST'])
 def register():
     uname = request.form.get('username')
     if User.query.filter_by(username=uname).first(): return jsonify({"status": "error"}), 400
-    new_user = User(
-        username=uname, 
-        password=generate_password_hash(request.form.get('password')), 
-        role=request.form.get('role')
-    )
+    new_user = User(username=uname, password=generate_password_hash(request.form.get('password')), role=request.form.get('role'))
     db.session.add(new_user); db.session.commit()
     return jsonify({"status": "success"})
 
@@ -98,12 +133,6 @@ def login():
         login_user(user); return jsonify({"status": "success"})
     return jsonify({"status": "error"}), 401
 
-@app.route('/api/incidents')
-@login_required
-def get_incidents_api():
-    incidents = Incident.query.all()
-    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type} for i in incidents])
-
 @app.route('/login')
 def login_page(): return render_template('login.html')
 
@@ -112,6 +141,12 @@ def register_page(): return render_template('register.html')
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
+
+@app.route('/api/incidents')
+@login_required
+def get_incidents_api():
+    inc = Incident.query.all()
+    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type} for i in inc])
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
