@@ -11,19 +11,9 @@
         .sidebar a.active { background: #3498db; color: white; border-left: 5px solid white; }
         .main-content { margin-left: 260px; padding: 40px; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
-        
-        /* Gallery Styles */
-        .gallery-item { position: relative; margin-bottom: 10px; }
-        .gallery-img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; cursor: zoom-in; border: 1px solid #eee; }
-        .btn-delete-img { 
-            position: absolute; top: 5px; right: 5px; 
-            background: rgba(220, 53, 69, 0.9); color: white; 
-            border: none; border-radius: 50%; width: 22px; height: 22px; 
-            font-size: 14px; line-height: 1; cursor: pointer; 
-            display: flex; align-items: center; justify-content: center;
-        }
-        .btn-delete-img:hover { background: #dc3545; transform: scale(1.1); }
-        .gallery-container { max-height: 450px; overflow-y: auto; padding: 15px; background: #fff; border-radius: 10px; border: 1px solid #eee; }
+        .gallery-img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; }
+        .gallery-item { position: relative; }
+        .btn-delete-img { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -60,7 +50,7 @@
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="row g-2">
                             <div class="col-md-5">
-                                <select id="uploadCatSelect" name="category" class="form-select" required>
+                                <select name="category" class="form-select" required>
                                     {% for cat in categories %}
                                     <option value="{{ cat.name }}">{{ cat.name }}</option>
                                     {% endfor %}
@@ -73,94 +63,89 @@
                 </div>
 
                 <div class="card p-4 bg-light text-center">
-                    <h5 class="fw-bold mb-3">3. Finalize & Publish</h5>
-                    <p class="small text-muted">Overwrites <code>crime_model.h5</code> with current dataset.</p>
-                    <button onclick="trainModel()" id="trainBtn" class="btn btn-success btn-lg w-100 fw-bold">PUBLISH MODEL</button>
-                    <div id="trainStatus" class="mt-2 small fw-bold text-primary"></div>
+                    <h5 class="fw-bold mb-1">3. Model Training</h5>
+                    <div id="statusBadge" class="badge bg-secondary mb-3">Status: Idle</div>
+                    <button onclick="startTraining()" id="trainBtn" class="btn btn-success btn-lg w-100 fw-bold">START TRAINING</button>
+                    <p id="lastRun" class="small text-muted mt-2"></p>
                 </div>
             </div>
 
             <div class="col-lg-5">
                 <div class="card p-4">
-                    <h5 class="fw-bold mb-3">Dataset Curation</h5>
-                    <label class="small fw-bold text-muted">View/Clean Category Folder:</label>
+                    <h5 class="fw-bold mb-3">Dataset Gallery</h5>
                     <select id="gallerySelect" class="form-select mb-3" onchange="loadGallery(this.value)">
-                        <option value="">-- Choose Category --</option>
+                        <option value="">-- View Folder --</option>
                         {% for cat in categories %}
-                        <option value="{{ cat.name }}">{{ cat.name }} ({{ counts[cat.name] or 0 }} images)</option>
+                        <option value="{{ cat.name }}">{{ cat.name }} ({{ counts[cat.name] or 0 }})</option>
                         {% endfor %}
                     </select>
-                    
-                    <div class="gallery-container">
-                        <div id="galleryGrid" class="row g-2">
-                            <div class="col-12 text-center text-muted p-5">Select a category to manage images</div>
-                        </div>
-                    </div>
+                    <div id="galleryGrid" class="row g-2" style="max-height: 400px; overflow-y: auto;"></div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        async function loadGallery(catName) {
-            const grid = document.getElementById('galleryGrid');
-            if(!catName) { grid.innerHTML = '<div class="col-12 text-center text-muted p-5">Select a category to manage images</div>'; return; }
+        // Check Status every 3 seconds
+        async function checkStatus() {
+            const res = await fetch('/api/admin/train-status');
+            const data = await res.json();
+            const badge = document.getElementById('statusBadge');
+            const btn = document.getElementById('trainBtn');
+
+            badge.innerText = "Status: " + data.status;
             
-            grid.innerHTML = '<div class="col-12 text-center p-5"><div class="spinner-border text-primary spinner-border-sm"></div></div>';
-            const res = await fetch(`/api/admin/gallery/${catName}`);
-            const images = await res.json();
-            
-            grid.innerHTML = '';
-            if(images.length === 0) {
-                grid.innerHTML = '<div class="col-12 text-center text-muted p-5">Folder is empty</div>';
-            } else {
-                images.forEach(img => {
-                    grid.innerHTML += `
-                        <div class="col-4 gallery-item">
-                            <button class="btn-delete-img" onclick="deleteImage('${catName}', '${img}')" title="Delete Image">×</button>
-                            <img src="/static/training_data/${catName}/${img}" class="gallery-img" onclick="window.open(this.src)">
-                        </div>`;
-                });
+            if (data.status.includes("Processing") || data.status.includes("Fitting")) {
+                badge.className = "badge bg-warning text-dark mb-3";
+                btn.disabled = true;
+                btn.innerText = "TRAINING IN PROGRESS...";
+            } else if (data.status === "Success") {
+                badge.className = "badge bg-success mb-3";
+                btn.disabled = false;
+                btn.innerText = "START TRAINING";
+                if(data.last_run) document.getElementById('lastRun').innerText = "Last trained at: " + data.last_run;
+            } else if (data.status.includes("Failed")) {
+                badge.className = "badge bg-danger mb-3";
+                btn.disabled = false;
             }
         }
 
-        async function deleteImage(catName, filename) {
-            if(!confirm("Delete this training image?")) return;
-            
-            const res = await fetch('/api/admin/delete-training-image', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category: catName, filename: filename })
-            });
-            
+        setInterval(checkStatus, 3000);
+
+        async function startTraining() {
+            const res = await fetch('/api/admin/train-model', { method: 'POST' });
             const data = await res.json();
-            if(data.status === 'success') {
-                loadGallery(catName); // Refresh gallery without page reload
-                // Note: To update the count in dropdown, a full reload or manual text update is needed
-            } else {
-                alert(data.message);
-            }
+            alert(data.message);
+        }
+
+        async function loadGallery(catName) {
+            const grid = document.getElementById('galleryGrid');
+            if(!catName) { grid.innerHTML = ''; return; }
+            const res = await fetch(`/api/admin/gallery/${catName}`);
+            const images = await res.json();
+            grid.innerHTML = images.map(img => `
+                <div class="col-4 gallery-item">
+                    <button class="btn-delete-img" onclick="deleteImage('${catName}', '${img}')">×</button>
+                    <img src="/static/training_data/${catName}/${img}" class="gallery-img">
+                </div>
+            `).join('');
+        }
+
+        async function deleteImage(cat, file) {
+            if(!confirm("Delete?")) return;
+            await fetch('/api/admin/delete-training-image', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({category: cat, filename: file})
+            });
+            loadGallery(cat);
         }
 
         document.getElementById('uploadForm').onsubmit = async (e) => {
             e.preventDefault();
-            const res = await fetch('/api/admin/upload-training', { method: 'POST', body: new FormData(e.target) });
-            const data = await res.json();
-            alert(data.message);
+            await fetch('/api/admin/upload-training', { method: 'POST', body: new FormData(e.target) });
             location.reload();
         };
-
-        async function trainModel() {
-            const btn = document.getElementById('trainBtn');
-            const status = document.getElementById('trainStatus');
-            btn.disabled = true;
-            status.innerText = "Training AI... This usually takes 60-90 seconds.";
-            
-            const res = await fetch('/api/admin/train-model', { method: 'POST' });
-            const data = await res.json();
-            status.innerText = data.message;
-            btn.disabled = false;
-        }
     </script>
 </body>
 </html>
