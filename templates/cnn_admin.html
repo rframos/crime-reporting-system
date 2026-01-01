@@ -6,9 +6,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
-        .sidebar { height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; }
-        .sidebar a { color: #bdc3c7; text-decoration: none; padding: 12px 25px; display: block; }
-        .sidebar a.active { background: #3498db; color: white; border-left: 5px solid white; }
         .main-content { margin-left: 260px; padding: 40px; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
         .gallery-img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; }
@@ -18,13 +15,7 @@
 </head>
 <body>
 
-    <div class="sidebar">
-        <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
-        <a href="/">Map Dashboard</a>
-        <a href="/reports">Incident Reports</a>
-        <a href="/cnn-admin" class="active">CNN Management</a>
-        <a href="/logout" class="text-danger mt-5 d-block p-3">Sign Out</a>
-    </div>
+    {% include 'sidebar.html' %}
 
     <div class="main-content">
         <h2 class="fw-bold mb-4">CNN Intelligence Control</h2>
@@ -101,9 +92,7 @@
         async function startTraining() { await fetch('/api/admin/train-model', { method: 'POST' }); }
 
         function triggerReset() {
-            if(confirm("WARNING: This will delete ALL users, reports, training images, and your AI model. Are you 100% sure?")) {
-                window.location.href = "/reset-db";
-            }
+            if(confirm("WARNING: This will delete ALL data. Proceed?")) { window.location.href = "/reset-db"; }
         }
 
         async function restoreDataset(input) {
@@ -112,8 +101,7 @@
             formData.append('zip_file', input.files[0]);
             const res = await fetch('/api/admin/restore-dataset', { method: 'POST', body: formData });
             const data = await res.json();
-            alert(data.message);
-            location.reload();
+            alert(data.message); location.reload();
         }
 
         async function loadGallery(catName) {
