@@ -36,18 +36,16 @@ class Incident(db.Model):
 def index():
     return render_template('index.html')
 
+# API: Report an Incident (POST)
 @app.route('/api/report', methods=['POST'])
 def create_report():
     try:
-        # Check if data is coming from a form or JSON
         data = request.form if request.form else request.get_json()
         
-        # Log data to Render Console for debugging
+        # Log data to Render Console
         print(f"--- Incoming Report ---")
         print(f"Type: {data.get('type')}")
-        print(f"Lat: {data.get('lat')}, Lng: {data.get('lng')}")
 
-        # Validate that we have all required fields
         if not all([data.get('type'), data.get('lat'), data.get('lng')]):
             return jsonify({"status": "error", "message": "Missing required fields"}), 400
 
@@ -66,15 +64,32 @@ def create_report():
         print(f"DB Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
-# --- TEMPORARY DATABASE RESET ROUTE ---
-# Visit this URL once to fix the "Insert" error: /reset-db
+# API: Get All Incidents (GET) - NEW!
+@app.route('/api/incidents', methods=['GET'])
+def get_incidents():
+    try:
+        incidents = Incident.query.all()
+        data = []
+        for i in incidents:
+            data.append({
+                "id": i.id,
+                "type": i.incident_type,
+                "description": i.description,
+                "lat": i.latitude,
+                "lng": i.longitude,
+                "date": i.created_at.strftime("%Y-%m-%d %H:%M")
+            })
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# TEMPORARY DATABASE RESET ROUTE
 @app.route('/reset-db')
 def reset_db():
     try:
-        # This deletes the old table and creates a fresh one with the correct columns
         db.drop_all()
         db.create_all()
-        return "Database has been reset! The 'incidents' table is now fresh and ready."
+        return "Database has been reset! The 'incidents' table is now fresh."
     except Exception as e:
         return f"Error resetting database: {str(e)}"
 
