@@ -38,7 +38,7 @@ class User(UserMixin, db.Model):
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
-    severity = db.Column(db.String(20), default='Low') # Admin can now edit this
+    severity = db.Column(db.String(20), default='Low')
 
 class Incident(db.Model):
     __tablename__ = 'incidents'
@@ -57,7 +57,7 @@ class Incident(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- ROUTES ---
+# --- PAGE ROUTES ---
 @app.route('/')
 @login_required
 def index():
@@ -94,21 +94,34 @@ def cnn_admin():
     categories = Category.query.all()
     return render_template('cnn_admin.html', categories=categories)
 
-# --- API ---
-@app.route('/api/categories', methods=['POST'])
-@login_required
-def add_category():
-    if current_user.role == 'Admin':
-        name = request.form.get('name')
-        sev = request.form.get('severity')
-        if name:
-            cat = Category.query.filter_by(name=name).first()
-            if cat: # Update existing
-                cat.severity = sev
-            else: # Create new
-                db.session.add(Category(name=name, severity=sev))
-            db.session.commit()
-    return redirect(url_for('cnn_admin'))
+# --- API ROUTES ---
+@app.route('/api/register', methods=['POST'])
+def register():
+    try:
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role', 'Resident')
+        
+        if User.query.filter_by(username=username).first():
+            return jsonify({"status": "error", "message": "User already exists"}), 400
+            
+        hashed = generate_password_hash(password)
+        new_user = User(username=username, password=hashed, role=role)
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    user = User.query.filter_by(username=username).first()
+    if user and check_password_hash(user.password, password):
+        login_user(user)
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
 @app.route('/api/report', methods=['POST'])
 @login_required
@@ -116,8 +129,6 @@ def create_report():
     try:
         image_file = request.files.get('image')
         selected_type = request.form.get('type')
-        
-        # Determine Severity based on Admin settings for that type
         cat_info = Category.query.filter_by(name=selected_type).first()
         severity = cat_info.severity if cat_info else "Low"
 
@@ -137,7 +148,7 @@ def create_report():
         )
         db.session.add(new_inc)
         db.session.commit()
-        return jsonify({"status": "success", "severity": severity})
+        return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
@@ -150,26 +161,42 @@ def get_incidents():
         "lng": i.longitude, "status": i.status, "severity": i.severity
     } for i in incidents])
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    user = User.query.filter_by(username=request.form.get('username')).first()
-    if user and check_password_hash(user.password, request.form.get('password')):
-        login_user(user)
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 401
+@app.route('/api/incident/<int:id>/status', methods=['POST'])
+@login_required
+def update_status(id):
+    if current_user.role == 'Resident': return jsonify({"status": "error"}), 403
+    incident = Incident.query.get_or_404(id)
+    incident.status = request.form.get('status')
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+@app.route('/api/categories', methods=['POST'])
+@login_required
+def add_category():
+    if current_user.role == 'Admin':
+        name = request.form.get('name')
+        sev = request.form.get('severity')
+        cat = Category.query.filter_by(name=name).first()
+        if cat: cat.severity = sev
+        else: db.session.add(Category(name=name, severity=sev))
+        db.session.commit()
+    return redirect(url_for('cnn_admin'))
 
 @app.route('/logout')
 def logout():
-    logout_user(); return redirect(url_for('login_page'))
+    logout_user()
+    return redirect(url_for('login_page'))
 
 @app.route('/reset-db')
 def reset_db():
-    db.drop_all(); db.create_all()
+    db.drop_all()
+    db.create_all()
     defaults = [('Theft', 'Medium'), ('Vandalism', 'Low'), ('Assault', 'High')]
     for n, s in defaults: db.session.add(Category(name=n, severity=s))
     db.session.commit()
-    return "Database Reset with Severity Settings!"
+    return "Database Reset Success!"
 
 if __name__ == '__main__':
-    with app.app_context(): db.create_all()
+    with app.app_context():
+        db.create_all()
     app.run(debug=True)
