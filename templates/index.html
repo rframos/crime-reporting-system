@@ -1,115 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>SafeCity SJDM | Resident Map</title>
+    <title>SafeCity | Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { background: #f8f9fa; }
-        .sidebar { height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; z-index: 1000; }
-        .sidebar a { color: #bdc3c7; text-decoration: none; padding: 12px 25px; display: block; transition: 0.3s; }
-        .sidebar a:hover { background: #34495e; color: white; }
-        .sidebar a.active { background: #3498db; color: white; border-left: 5px solid white; }
         .main-content { margin-left: 260px; padding: 30px; }
-        #map { height: 600px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border: 2px solid white; }
-        .report-card { background: white; border-radius: 15px; padding: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        #map { height: 500px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
-
-    <div class="sidebar">
-        <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
-        <a href="/" class="active">Map Dashboard</a>
-        {% if current_user.role != 'Resident' %}
-            <a href="/reports">Incident Reports</a>
-        {% endif %}
-        {% if current_user.role == 'Admin' %}
-            <a href="/cnn-admin">CNN Management</a>
-        {% endif %}
-        <a href="/logout" class="text-danger mt-5">Sign Out</a>
-    </div>
+    {% include 'sidebar.html' %}
 
     <div class="main-content">
-        <div class="row g-4">
+        <h2 class="fw-bold mb-4">Resident Reporting Portal</h2>
+        <div class="row">
+            <div class="col-lg-8"><div id="map"></div></div>
             <div class="col-lg-4">
-                <div class="report-card">
-                    <h4 class="fw-bold mb-3">Report Incident</h4>
-                    <p class="text-muted small">Tap the map to pin location, then upload a photo for AI classification.</p>
-                    
+                <div class="bg-white p-4 rounded shadow-sm">
+                    <h5 class="fw-bold">Report Incident</h5>
                     <form id="reportForm">
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Incident Photo</label>
-                            <input type="file" name="image" class="form-control" id="imgInput" accept="image/*">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Manual Category (Fallback)</label>
-                            <select name="type" class="form-select">
-                                {% for cat in categories %}
-                                <option value="{{ cat.name }}">{{ cat.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Description</label>
-                            <textarea name="description" class="form-control" rows="3" placeholder="Describe the situation..." required></textarea>
-                        </div>
-
                         <input type="hidden" id="lat" name="lat">
                         <input type="hidden" id="lng" name="lng">
-
-                        <button type="submit" id="submitBtn" class="btn btn-primary w-100 fw-bold py-2">
-                            Submit Report
-                        </button>
+                        <div class="mb-3">
+                            <label class="form-label">Upload Evidence</label>
+                            <input type="file" name="image" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Manual Category</label>
+                            <select name="type" class="form-select">
+                                {% for cat in categories %}<option value="{{cat.name}}">{{cat.name}}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Submit Report</button>
                     </form>
+                    <div id="status" class="mt-3 alert d-none"></div>
                 </div>
-            </div>
-
-            <div class="col-lg-8">
-                <div id="map"></div>
             </div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Initialize Map in SJDM
-        var map = L.map('map').setView([14.8091, 121.0741], 13);
+        const map = L.map('map').setView([14.8087, 121.0450], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        var marker;
-        map.on('click', function(e) {
+        let marker;
+        map.on('click', e => {
             if(marker) map.removeLayer(marker);
             marker = L.marker(e.latlng).addTo(map);
             document.getElementById('lat').value = e.latlng.lat;
             document.getElementById('lng').value = e.latlng.lng;
         });
 
-        // Handle Form Submission
         document.getElementById('reportForm').onsubmit = async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('submitBtn');
-            const lat = document.getElementById('lat').value;
+            const btn = e.target.querySelector('button');
+            const alert = document.getElementById('status');
+            btn.disabled = true; btn.innerText = "Analyzing...";
 
-            if(!lat) return alert("Please click on the map to pin the incident location.");
-
-            btn.disabled = true;
-            btn.innerText = "Analyzing & Sending...";
-
-            const formData = new FormData(e.target);
-            const res = await fetch('/api/report', { method: 'POST', body: formData });
+            const res = await fetch('/api/report', { method: 'POST', body: new FormData(e.target) });
             const data = await res.json();
 
-            if(res.ok) {
-                alert(`Success! Incident reported. AI Classified as: ${data.classified_as}`);
-                location.reload();
-            } else {
-                alert("Upload failed.");
-                btn.disabled = false;
-                btn.innerText = "Submit Report";
-            }
+            btn.disabled = false; btn.innerText = "Submit Report";
+            alert.className = "mt-3 alert alert-success d-block";
+            alert.innerHTML = `<strong>Success!</strong><br>Type: ${data.classified_as}<br>Confidence: ${data.confidence}%`;
         };
     </script>
 </body>
