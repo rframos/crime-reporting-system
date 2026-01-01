@@ -2,63 +2,30 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SafeCity SJDM | Emergency Contacts</title>
+    <title>SafeCity | Contacts</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background-color: #f8f9fa; }
-        .sidebar { height: 100vh; background: #212529; color: white; padding-top: 20px; position: fixed; width: 250px; }
-        .sidebar a { color: #adb5bd; text-decoration: none; padding: 10px 20px; display: block; }
-        .main-content { margin-left: 250px; padding: 20px; }
-        .contact-card { border-left: 5px solid #dc3545; transition: transform 0.2s; }
-        .contact-card:hover { transform: scale(1.02); }
-    </style>
+    <style>.sidebar { height: 100vh; background: #212529; color: white; padding-top: 20px; position: fixed; width: 250px; } .main-content { margin-left: 250px; padding: 20px; }</style>
 </head>
 <body>
-
     <div class="sidebar">
-        <h4 class="text-center mb-4">SafeCity SJDM</h4>
-        <a href="/">Map Dashboard</a>
-        {% if current_user.role in ['Admin', 'Official', 'Police'] %}<a href="/reports">Incident Reports</a>{% endif %}
-        {% if current_user.role in ['Police', 'Admin'] %}<a href="/heatmap">Crime Heatmap</a>{% endif %}
+        <h4 class="text-center">SafeCity</h4>
+        <a href="/">Dashboard</a>
         <a href="/contacts" class="bg-primary text-white">Emergency Contacts</a>
-        {% if current_user.role == 'Admin' %}<a href="/cnn-admin">CNN Model Training</a>{% endif %}
         <hr><a href="/logout" class="text-danger px-3">Logout</a>
     </div>
-
     <div class="main-content">
-        <div class="container-fluid">
-            <h2 class="fw-bold mb-4">Emergency Directories</h2>
-            <p class="text-muted">Direct hotlines for San Jose del Monte, Bulacan.</p>
-
-            <div class="row g-4">
-                <div class="col-md-6">
-                    <div class="card contact-card p-3 h-100">
-                        <h5 class="text-danger">SJDM Police Station</h5>
-                        <p><b>Location:</b> City Hall Compound, Dulong Bayan</p>
-                        <p><b>Hotline:</b> (044) 815-2801 / 0998-598-5381</p>
-                        <a href="tel:09985985381" class="btn btn-outline-danger btn-sm w-100">Call Now</a>
-                    </div>
+        <h3>Emergency Directories</h3>
+        <div class="row mt-4">
+            <div class="col-md-6 mb-3">
+                <div class="card p-3 border-start border-danger border-5">
+                    <h5>SJDM Police</h5>
+                    <p class="mb-0">Hotline: 0998-598-5381</p>
                 </div>
-                <div class="col-md-6">
-                    <div class="card contact-card p-3 h-100" style="border-left-color: #fd7e14;">
-                        <h5 style="color: #fd7e14;">Bureau of Fire Protection (SJDM)</h5>
-                        <p><b>Hotline:</b> (044) 307-2175 / 0925-522-8722</p>
-                        <a href="tel:09255228722" class="btn btn-outline-warning btn-sm w-100">Call Now</a>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card contact-card p-3 h-100" style="border-left-color: #0d6efd;">
-                        <h5 class="text-primary">CDRRMO (Rescue)</h5>
-                        <p><b>Hotline:</b> (044) 919-7370 / 0917-854-3254</p>
-                        <a href="tel:09178543254" class="btn btn-outline-primary btn-sm w-100">Call Now</a>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card contact-card p-3 h-100" style="border-left-color: #198754;">
-                        <h5 class="text-success">Ospital ng Lungsod ng SJDM</h5>
-                        <p><b>Hotline:</b> (044) 307-0012</p>
-                        <a href="tel:0443070012" class="btn btn-outline-success btn-sm w-100">Call Now</a>
-                    </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="card p-3 border-start border-warning border-5">
+                    <h5>Fire Station</h5>
+                    <p class="mb-0">Hotline: (044) 307-2175</p>
                 </div>
             </div>
         </div>
