@@ -1,7 +1,7 @@
-Flask
-Flask-SQLAlchemy
+flask
+flask-sqlalchemy
 psycopg2-binary
 tensorflow-cpu
-Pillow
 numpy
+Pillow
 gunicorn
