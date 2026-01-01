@@ -33,7 +33,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='Resident') # Admin, Police, Official, Resident
+    role = db.Column(db.String(20), default='Resident')
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -55,7 +55,23 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- AI LOGIC ---
+# --- CNN ENGINE ---
+def init_cnn_model():
+    if not os.path.exists(app.config['MODEL_PATH']):
+        categories = Category.query.all()
+        num_classes = len(categories) if categories else 3
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
+            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
+            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dense(num_classes, activation='softmax')
+        ])
+        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        model.save(app.config['MODEL_PATH'])
+
 def process_and_classify(image_path):
     if not os.path.exists(app.config['MODEL_PATH']): return None, None
     try:
@@ -70,11 +86,41 @@ def process_and_classify(image_path):
     except: pass
     return None, None
 
+# --- TRAINING API ---
+@app.route('/api/train', methods=['POST'])
+@login_required
+def train_model():
+    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
+    
+    incidents = Incident.query.filter(Incident.image_url != None).all()
+    categories = Category.query.order_by(Category.id).all()
+    cat_map = {cat.name: i for i, cat in enumerate(categories)}
+    
+    X, y = [], []
+    for inc in incidents:
+        img_path = os.path.join(app.config['UPLOAD_FOLDER'], inc.image_url)
+        if os.path.exists(img_path):
+            img = cv2.imread(img_path)
+            img = cv2.resize(img, (150, 150))
+            X.append(img)
+            y.append(cat_map.get(inc.incident_type, 0))
+    
+    if len(X) < 5: # Minimum samples to start training
+        return jsonify({"status": "error", "message": "Need at least 5 images to train."}), 400
+        
+    X = np.array(X).astype('float32') / 255.0
+    y = np.array(y)
+    
+    model = tf.keras.models.load_model(app.config['MODEL_PATH'])
+    model.fit(X, y, epochs=5)
+    model.save(app.config['MODEL_PATH'])
+    
+    return jsonify({"status": "success", "message": "AI Training Complete!"})
+
 # --- ROUTES ---
 @app.route('/')
 @login_required
-def index():
-    return render_template('index.html', categories=Category.query.all())
+def index(): return render_template('index.html', categories=Category.query.all())
 
 @app.route('/login')
 def login_page(): return render_template('login.html')
@@ -83,18 +129,13 @@ def login_page(): return render_template('login.html')
 @login_required
 def reports():
     if current_user.role == 'Resident': return redirect(url_for('index'))
-    incidents = Incident.query.order_by(Incident.created_at.desc()).all()
-    return render_template('reports.html', incidents=incidents)
+    return render_template('reports.html', incidents=Incident.query.order_by(Incident.created_at.desc()).all())
 
-# --- Updated Heatmap Route in app.py ---
 @app.route('/heatmap')
 @login_required
 def heatmap():
-    if current_user.role not in ['Admin', 'Police', 'Official']: 
-        return redirect(url_for('index'))
-    # IMPORTANT: Pass categories so the filter dropdown works
-    categories = Category.query.order_by(Category.id).all()
-    return render_template('heatmap.html', categories=categories)
+    if current_user.role not in ['Admin', 'Police', 'Official']: return redirect(url_for('index'))
+    return render_template('heatmap.html', categories=Category.query.all())
 
 @app.route('/cnn-admin')
 @login_required
@@ -102,18 +143,13 @@ def cnn_admin():
     if current_user.role != 'Admin': return redirect(url_for('index'))
     return render_template('cnn_admin.html', categories=Category.query.order_by(Category.id).all())
 
-# --- API ---
+# --- API HELPERS ---
 @app.route('/api/register', methods=['POST'])
 def register():
-    try:
-        username = request.form.get('username')
-        if User.query.filter_by(username=username).first():
-            return jsonify({"status": "error", "message": "Username taken"}), 400
-        hashed = generate_password_hash(request.form.get('password'))
-        new_user = User(username=username, password=hashed, role=request.form.get('role'))
-        db.session.add(new_user); db.session.commit()
-        return jsonify({"status": "success"})
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 400
+    hashed = generate_password_hash(request.form.get('password'))
+    new_user = User(username=request.form.get('username'), password=hashed, role=request.form.get('role'))
+    db.session.add(new_user); db.session.commit()
+    return jsonify({"status": "success"})
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -127,13 +163,10 @@ def login():
 def create_report():
     img = request.files.get('image')
     lat, lng = request.form.get('lat'), request.form.get('lng')
-    if not lat or not lng: return jsonify({"status": "error", "message": "Pin location"}), 400
-    
     final_type = request.form.get('type')
     cat = Category.query.filter_by(name=final_type).first()
     final_sev = cat.severity if cat else "Low"
     filename = None
-    
     if img:
         filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
         path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -142,50 +175,34 @@ def create_report():
         if ai_t: final_type, final_sev = ai_t, ai_s
 
     new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
-                    latitude=float(lat), longitude=float(lng), image_url=filename,
-                    severity=final_sev, user_id=current_user.id)
+                       latitude=float(lat), longitude=float(lng), image_url=filename,
+                       severity=final_sev, user_id=current_user.id)
     db.session.add(new_inc); db.session.commit()
     return jsonify({"status": "success"})
 
-@app.route('/api/categories', methods=['POST'])
-@login_required
-def manage_categories():
-    if current_user.role == 'Admin':
-        name, sev = request.form.get('name'), request.form.get('severity')
-        cat = Category.query.filter_by(name=name).first()
-        if cat: cat.severity = sev
-        else: db.session.add(Category(name=name, severity=sev))
-        db.session.commit()
-    return redirect(url_for('cnn_admin'))
-
 @app.route('/api/incidents', methods=['GET'])
-@login_required
 def get_incidents():
     incidents = Incident.query.all()
     return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type, "severity": i.severity} for i in incidents])
+
+@app.route('/api/categories', methods=['POST'])
+def categories_api():
+    db.session.add(Category(name=request.form.get('name'), severity=request.form.get('severity')))
+    db.session.commit()
+    return redirect(url_for('cnn_admin'))
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
 
 @app.route('/reset-db')
 def reset_db():
-    try:
-        db.session.remove()
-        # Direct SQL for PostgreSQL CASCADE support
-        db.session.execute(text('DROP TABLE IF EXISTS incidents CASCADE;'))
-        db.session.execute(text('DROP TABLE IF EXISTS "user" CASCADE;'))
-        db.session.execute(text('DROP TABLE IF EXISTS category CASCADE;'))
-        db.session.commit()
-        db.create_all()
-        # Seed
-        for n, s in [('Theft','Medium'), ('Fire','Critical'), ('Vandalism','Low')]:
-            db.session.add(Category(name=n, severity=s))
-        db.session.commit()
-        return "Database Cleaned & Recreated Successfully!"
-    except Exception as e:
-        db.session.rollback()
-        return f"Error resetting database: {str(e)}"
+    db.session.remove(); db.session.execute(text('DROP TABLE IF EXISTS incidents CASCADE;'))
+    db.session.execute(text('DROP TABLE IF EXISTS "user" CASCADE;')); db.session.execute(text('DROP TABLE IF EXISTS category CASCADE;'))
+    db.session.commit(); db.create_all()
+    for n, s in [('Theft','Medium'), ('Fire','Critical'), ('Vandalism','Low')]: db.session.add(Category(name=n, severity=s))
+    db.session.commit(); init_cnn_model()
+    return "Reset Success"
 
 if __name__ == '__main__':
-    with app.app_context(): db.create_all()
+    with app.app_context(): db.create_all(); init_cnn_model()
     app.run(debug=True)
