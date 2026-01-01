@@ -3,10 +3,13 @@ import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
-# INITIALIZE FLASK (Standard Folders)
+# This finds the absolute path of the 'crime-reporting-system' folder
+base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 app = Flask(__name__, 
-            template_folder='../templates', 
-            static_folder='../static')
+            root_path=base_dir,
+            template_folder='templates',
+            static_folder='static')
 
 # DATABASE CONFIG
 uri = os.environ.get('DATABASE_URL')
@@ -34,23 +37,18 @@ def index():
 @app.route('/api/report', methods=['POST'])
 def create_report():
     try:
-        data = request.form
+        # Get data from form
         new_incident = Incident(
-            incident_type=f"Test_{data.get('type')}",
-            description=data.get('description'),
-            latitude=float(data.get('lat')),
-            longitude=float(data.get('lng'))
+            incident_type=request.form.get('type'),
+            description=request.form.get('description'),
+            latitude=float(request.form.get('lat')),
+            longitude=float(request.form.get('lng'))
         )
         db.session.add(new_incident)
         db.session.commit()
-        return jsonify({"status": "success", "detected_type": new_incident.incident_type}), 201
+        return jsonify({"status": "success", "message": "Reported!"}), 201
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
-
-@app.route('/api/incidents', methods=['GET'])
-def get_incidents():
-    incidents = Incident.query.all()
-    return jsonify([{"lat": i.latitude, "lng": i.longitude, "count": 1} for i in incidents])
 
 if __name__ == '__main__':
     with app.app_context():
