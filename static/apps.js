@@ -3,7 +3,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 var marker;
 
-// Auth Logic
+// --- Auth Toggle ---
 const toggleBtn = document.getElementById('toggleAuth');
 const roleSelect = document.getElementById('roleSelect');
 const authTitle = document.getElementById('authTitle');
@@ -19,6 +19,7 @@ toggleBtn.onclick = (e) => {
     roleSelect.classList.toggle('hidden', isLogin);
 };
 
+// --- Auth Submit ---
 document.getElementById('authForm').onsubmit = function(e) {
     e.preventDefault();
     const url = isLogin ? '/api/login' : '/api/register';
@@ -32,7 +33,7 @@ document.getElementById('authForm').onsubmit = function(e) {
     });
 };
 
-// Map Logic
+// --- Map Click ---
 map.on('click', (e) => {
     document.getElementById('lat').value = e.latlng.lat.toFixed(6);
     document.getElementById('lng').value = e.latlng.lng.toFixed(6);
@@ -40,6 +41,7 @@ map.on('click', (e) => {
     else marker = L.marker(e.latlng).addTo(map);
 });
 
+// --- Incident Logic ---
 function loadIncidents() {
     fetch('/api/incidents')
     .then(res => res.json())
@@ -60,7 +62,7 @@ document.getElementById('incidentForm').onsubmit = function(e) {
         if(data.status === 'success') {
             alert("Reported!");
             location.reload();
-        } else { alert("Error reporting. Are you logged in?"); }
+        } else { alert("Please login to submit a report."); }
     });
 };
 
