@@ -1,24 +1,32 @@
 <!DOCTYPE html>
 <html>
-<head><title>Reports</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head>
-<body>
+<head>
+    <title>SafeCity | Reports</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>.main-content { margin-left: 260px; padding: 40px; }</style>
+</head>
+<body class="bg-light">
     {% include 'sidebar.html' %}
-    <div style="margin-left:260px; padding:40px;">
-        <h2 class="fw-bold mb-4">Incident Log</h2>
-        <table class="table table-hover bg-white shadow-sm rounded">
-            <thead class="table-dark"><tr><th>Date</th><th>Image</th><th>Type</th><th>Confidence</th><th>Status</th></tr></thead>
-            <tbody>
-                {% for i in incidents %}
-                <tr>
-                    <td>{{ i.created_at.strftime('%m/%d %H:%M') }}</td>
-                    <td><img src="/static/uploads/{{ i.image_url }}" style="width:50px; border-radius:5px;"></td>
-                    <td>{{ i.incident_type }}</td>
-                    <td>{{ i.confidence }}%</td>
-                    <td><span class="badge bg-secondary">{{ i.status }}</span></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="main-content">
+        <h2 class="fw-bold mb-4">Incident Reports Log</h2>
+        <div class="card shadow-sm border-0 p-4">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr><th>Date</th><th>Type</th><th>Image</th><th>Conf.</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    {% for i in incidents %}
+                    <tr>
+                        <td>{{ i.created_at.strftime('%m/%d/%Y %H:%M') }}</td>
+                        <td><strong>{{ i.incident_type }}</strong></td>
+                        <td><img src="/static/uploads/{{ i.image_url }}" style="width:50px; border-radius:5px;"></td>
+                        <td><span class="badge bg-info">{{ i.confidence }}%</span></td>
+                        <td><span class="badge bg-warning text-dark">{{ i.status }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </body>
 </html>
