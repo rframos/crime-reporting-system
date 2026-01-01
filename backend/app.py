@@ -62,7 +62,6 @@ def load_user(user_id): return User.query.get(int(user_id))
 
 # --- HELPERS ---
 def get_dataset_counts():
-    """Returns a dictionary of category names and the number of images in their folders."""
     counts = {}
     if os.path.exists(app.config['TRAIN_FOLDER']):
         for cat_dir in os.listdir(app.config['TRAIN_FOLDER']):
@@ -72,7 +71,6 @@ def get_dataset_counts():
     return counts
 
 # --- AI LOGIC ---
-
 def process_and_classify(image_path):
     if not os.path.exists(app.config['MODEL_PATH']): return None, None
     try:
@@ -89,7 +87,6 @@ def process_and_classify(image_path):
     return None, None
 
 # --- ADMIN API ---
-
 @app.route('/api/admin/add-category', methods=['POST'])
 @login_required
 def add_category():
@@ -106,27 +103,31 @@ def add_category():
 def upload_training():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
     cat_name = request.form.get('category')
-    if 'images' not in request.files:
-        return jsonify({"status": "error", "message": "No files selected"}), 400
-    
     files = request.files.getlist('images')
     cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat_name)
     os.makedirs(cat_path, exist_ok=True)
-
     saved = 0
     for f in files:
         if f and f.filename != '':
             filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{f.filename}")
             f.save(os.path.join(cat_path, filename))
             saved += 1
-    return jsonify({"status": "success", "message": f"Saved {saved} images to {cat_name}."})
+    return jsonify({"status": "success", "message": f"Saved {saved} images."})
+
+@app.route('/api/admin/gallery/<category_name>')
+@login_required
+def get_gallery(category_name):
+    if current_user.role != 'Admin': return jsonify([]), 403
+    cat_path = os.path.join(app.config['TRAIN_FOLDER'], category_name)
+    if not os.path.exists(cat_path): return jsonify([])
+    images = [img for img in os.listdir(cat_path) if img.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    return jsonify(images)
 
 @app.route('/api/admin/train-model', methods=['POST'])
 @login_required
 def train_model():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
     K.clear_session()
-    
     categories = Category.query.order_by(Category.id).all()
     X, y = [], []
     for i, cat in enumerate(categories):
@@ -137,12 +138,9 @@ def train_model():
             if img is not None:
                 X.append(cv2.resize(img, (150, 150)))
                 y.append(i)
-
-    if len(X) < 2: return jsonify({"status": "error", "message": "Add images to at least 2 categories first."}), 400
-
+    if len(X) < 2: return jsonify({"status": "error", "message": "Need more data."}), 400
     X = np.array(X).astype('float32') / 255.0
     y = np.array(y)
-    
     model = tf.keras.models.Sequential([
         tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(150, 150, 3)),
         tf.keras.layers.MaxPooling2D(2,2),
@@ -153,12 +151,10 @@ def train_model():
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     model.fit(X, y, epochs=10, batch_size=4, verbose=0)
     model.save(app.config['MODEL_PATH'])
-    
     K.clear_session()
-    return jsonify({"status": "success", "message": "CNN model published successfully!"})
+    return jsonify({"status": "success", "message": "Model Published!"})
 
 # --- PAGE ROUTES ---
-
 @app.route('/')
 @login_required
 def index(): return render_template('index.html', categories=Category.query.all())
@@ -184,14 +180,12 @@ def create_report():
     cat = Category.query.filter_by(name=final_type).first()
     final_sev = cat.severity if cat else "Low"
     filename = None
-    
     if img:
         filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
         path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         img.save(path)
         ai_t, ai_s = process_and_classify(path)
         if ai_t: final_type, final_sev = ai_t, ai_s
-
     new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
                        latitude=float(lat), longitude=float(lng), image_url=filename,
                        severity=final_sev, user_id=current_user.id)
