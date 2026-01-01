@@ -51,19 +51,22 @@ def load_user(user_id):
 # --- AUTH ROUTES ---
 @app.route('/api/register', methods=['POST'])
 def register():
-    data = request.form
-    if User.query.filter_by(username=data.get('username')).first():
-        return jsonify({"status": "error", "message": "User already exists"}), 400
-    
-    hashed_pw = generate_password_hash(data.get('password'))
-    new_user = User(
-        username=data.get('username'),
-        password=hashed_pw,
-        role=data.get('role', 'Resident')
-    )
-    db.session.add(new_user)
-    db.session.commit()
-    return jsonify({"status": "success", "message": "Registered! You can now login."})
+    try:
+        data = request.form
+        if User.query.filter_by(username=data.get('username')).first():
+            return jsonify({"status": "error", "message": "User already exists"}), 400
+        
+        hashed_pw = generate_password_hash(data.get('password'))
+        new_user = User(
+            username=data.get('username'),
+            password=hashed_pw,
+            role=data.get('role', 'Resident')
+        )
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Registered! You can now login."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route('/api/login', methods=['POST'])
 def login():
