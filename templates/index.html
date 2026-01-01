@@ -4,6 +4,12 @@
     <title>Crime Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="/static/style.css">
+
+<div id="map" style="height: 500px; width: 100%; border: 1px solid #ccc;"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/apps.js"></script>
 </head>
 <body>
     <div class="container">
