@@ -2,58 +2,86 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SafeCity SJDM | Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeCity SJDM | Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { background: #f4f7f6; }
-        .sidebar { height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; }
-        .sidebar-brand { font-weight: bold; font-size: 1.5rem; padding: 0 20px 20px; border-bottom: 1px solid #3e4f5f; }
+        body { background: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .sidebar { height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; z-index: 1000; }
+        .sidebar-brand { font-weight: bold; font-size: 1.4rem; padding: 0 20px 20px; border-bottom: 1px solid #3e4f5f; letter-spacing: 1px; }
         .sidebar a { color: #bdc3c7; text-decoration: none; padding: 12px 25px; display: block; transition: 0.3s; }
         .sidebar a:hover { background: #34495e; color: white; }
         .sidebar a.active { background: #3498db; color: white; border-left: 5px solid #fff; }
         .main-content { margin-left: 260px; padding: 30px; }
-        #map { height: 550px; width: 100%; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        .card { border: none; border-radius: 15px; }
+        #map { height: 550px; width: 100%; border-radius: 15px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); border: 2px solid white; }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .user-info { position: absolute; bottom: 20px; width: 100%; padding: 0 20px; border-top: 1px solid #3e4f5f; padding-top: 15px; }
     </style>
 </head>
 <body>
     <div class="sidebar">
-        <div class="sidebar-brand">SafeCity SJDM</div>
+        <div class="sidebar-brand text-center">SafeCity SJDM</div>
         <a href="/" class="active">Map Dashboard</a>
         {% if current_user.role != 'Resident' %}<a href="/reports">Incident Reports</a>{% endif %}
         {% if current_user.role in ['Police', 'Admin'] %}<a href="/heatmap">Crime Heatmap</a>{% endif %}
         <a href="/contacts">Emergency Contacts</a>
         {% if current_user.role == 'Admin' %}<a href="/cnn-admin">CNN Management</a>{% endif %}
-        <div style="position:absolute; bottom:20px; width:100%; padding: 0 20px;">
-            <p class="small mb-1 text-info">Logged in: {{ current_user.username }}</p>
-            <a href="/logout" class="text-danger p-0">Sign Out</a>
+        
+        <div class="user-info">
+            <p class="small mb-1 text-info">Logged in: <b>{{ current_user.username }}</b></p>
+            <p class="small text-muted mb-2">Role: {{ current_user.role }}</p>
+            <a href="/logout" class="text-danger p-0 small">Sign Out</a>
         </div>
     </div>
 
     <div class="main-content">
-        <div class="row">
+        <div class="row g-4">
             <div class="col-lg-4">
-                <div class="card p-4 shadow-sm bg-white">
-                    <h5 class="fw-bold mb-3">Submit Report</h5>
-                    <form id="incidentForm">
-                        <label class="small fw-bold">Incident Type</label>
-                        <select name="type" class="form-select mb-3">
-                            {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
-                        </select>
-                        <label class="small fw-bold">Details</label>
-                        <textarea name="description" class="form-control mb-3" rows="4" required></textarea>
-                        <div class="row g-2 mb-3">
-                            <div class="col"><input type="text" id="lat" name="lat" class="form-control form-control-sm" readonly placeholder="Lat"></div>
-                            <div class="col"><input type="text" id="lng" name="lng" class="form-control form-control-sm" readonly placeholder="Lng"></div>
+                <div class="card p-4 bg-white">
+                    <h5 class="fw-bold mb-3 text-primary">Report Incident</h5>
+                    <p class="small text-muted">Select a type and pin the location on the map.</p>
+                    
+                    <form id="incidentForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Incident Type</label>
+                            <select name="type" class="form-select shadow-sm" required>
+                                {% for cat in categories %}
+                                <option value="{{ cat.name }}">{{ cat.name }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100">Pin Incident</button>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Evidence Photo (AI Analysis)</label>
+                            <input type="file" name="image" class="form-control shadow-sm" accept="image/*">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Incident Details</label>
+                            <textarea name="description" class="form-control shadow-sm" rows="4" placeholder="Describe the situation..." required></textarea>
+                        </div>
+                        
+                        <div class="row g-2 mb-3">
+                            <div class="col">
+                                <input type="text" id="lat" name="lat" class="form-control form-control-sm bg-light" readonly placeholder="Lat">
+                            </div>
+                            <div class="col">
+                                <input type="text" id="lng" name="lng" class="form-control form-control-sm bg-light" readonly placeholder="Lng">
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold shadow">Submit Report</button>
                     </form>
                 </div>
             </div>
-            <div class="col-lg-8"><div id="map"></div></div>
+            
+            <div class="col-lg-8">
+                <div id="map"></div>
+            </div>
         </div>
     </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="/static/apps.js"></script>
 </body>
