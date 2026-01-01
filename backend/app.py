@@ -4,11 +4,12 @@ from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
 # 1. INITIALIZE FLASK
+# Points to your /frontend folder for HTML/CSS/JS
 app = Flask(__name__, 
             template_folder='../frontend', 
             static_folder='../frontend')
 
-# 2. DATABASE CONFIGURATION
+# 2. DATABASE CONFIGURATION (Render PostgreSQL Fix)
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
@@ -32,23 +33,23 @@ class Incident(db.Model):
 # 4. ROUTES
 @app.route('/')
 def index():
+    # Looks for /frontend/index.html
     return render_template('index.html')
 
 @app.route('/api/report', methods=['POST'])
 def create_report():
     try:
-        # Get data from the form
+        # Get data from the frontend form
         description = request.form.get('description')
         lat = float(request.form.get('lat'))
         lng = float(request.form.get('lng'))
         manual_type = request.form.get('type')
         
-        # --- MOCK CNN LOGIC ---
-        # Instead of running a real model, we just pretend for now
-        print("Testing Connection: Received image and data...")
-        detected_type = f"Mock_{manual_type}" # Just to show it processed
+        # MOCK LOGIC for Connection Testing
+        # This bypasses the CNN for now to ensure DB connectivity works
+        detected_type = f"Test_{manual_type}"
         
-        # Save to Database
+        # Save to PostgreSQL
         new_incident = Incident(
             incident_type=detected_type,
             description=description,
@@ -60,7 +61,7 @@ def create_report():
 
         return jsonify({
             "status": "success", 
-            "message": "Connection working! Database saved.",
+            "message": "Connection working! Data saved to PostgreSQL.",
             "detected_type": detected_type
         }), 201
 
@@ -69,13 +70,18 @@ def create_report():
 
 @app.route('/api/incidents', methods=['GET'])
 def get_incidents():
+    # Returns all incidents for the Heatmap.js visualization
     incidents = Incident.query.all()
     return jsonify([{
-        "lat": i.latitude, "lng": i.longitude, 
-        "type": i.incident_type, "status": i.status
+        "lat": i.latitude, 
+        "lng": i.longitude, 
+        "type": i.incident_type, 
+        "status": i.status
     } for i in incidents])
 
+# 5. INITIALIZE DATABASE
 if __name__ == '__main__':
     with app.app_context():
+        # This creates the 'incidents' table in PostgreSQL automatically
         db.create_all()
     app.run(debug=True)
