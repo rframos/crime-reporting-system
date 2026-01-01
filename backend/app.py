@@ -17,6 +17,10 @@ app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///local.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
+app.config['TRAIN_FOLDER'] = os.path.join(base_dir, 'static/training_data')
+
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -47,13 +51,11 @@ class Incident(db.Model):
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     message = db.Column(db.String(255))
-    is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- RBAC ---
 def roles_required(*roles):
     def decorator(f):
         @wraps(f)
@@ -64,16 +66,48 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- ROUTES ---
+# --- CNN & CATEGORY ROUTES ---
+@app.route('/cnn-admin')
+@roles_required('Admin')
+def cnn_admin():
+    categories = Category.query.all()
+    # Count images per category
+    counts = {}
+    for cat in categories:
+        cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
+        counts[cat.name] = len(os.listdir(cat_path)) if os.path.exists(cat_path) else 0
+    return render_template('cnn_admin.html', categories=categories, counts=counts)
+
+@app.route('/api/categories', methods=['POST'])
+@roles_required('Admin')
+def add_category():
+    name = request.form.get('name')
+    severity = request.form.get('severity')
+    if not Category.query.filter_by(name=name).first():
+        new_cat = Category(name=name, severity=severity)
+        db.session.add(new_cat)
+        db.session.commit()
+        # Create folder for images
+        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], name), exist_ok=True)
+    return redirect(url_for('cnn_admin'))
+
+@app.route('/api/upload-training', methods=['POST'])
+@roles_required('Admin')
+def upload_training():
+    cat_name = request.form.get('category')
+    files = request.files.getlist('images')
+    cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat_name)
+    os.makedirs(cat_path, exist_ok=True)
+    
+    for f in files:
+        if f:
+            f.save(os.path.join(cat_path, secure_filename(f.filename)))
+    return redirect(url_for('cnn_admin'))
+
+# --- CORE ROUTES ---
 @app.route('/')
 @login_required
-def index():
-    return render_template('index.html', categories=Category.query.all())
-
-@app.route('/heatmap')
-@roles_required('Admin', 'Police', 'Barangay')
-def heatmap_page():
-    return render_template('heatmap.html', categories=Category.query.all())
+def index(): return render_template('index.html', categories=Category.query.all())
 
 @app.route('/reports')
 @roles_required('Admin', 'Police', 'Barangay')
@@ -81,43 +115,11 @@ def reports():
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
 
-# --- SYSTEM FEATURES ---
 @app.route('/reset-db')
 def reset_db():
     db.drop_all(); db.create_all()
-    db.session.add_all([Category(name="Theft", severity="Medium"), Category(name="Vandalism", severity="Low")])
-    db.session.commit()
-    return "Database Reset Successful."
+    return "Database Reset. Go to /register to create your Admin."
 
-@app.route('/api/report', methods=['POST'])
-@login_required
-def create_report():
-    img = request.files.get('image')
-    lat, lng = request.form.get('lat'), request.form.get('lng')
-    final_type = request.form.get('type')
-    
-    f_name = None
-    if img:
-        f_name = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
-        img.save(os.path.join(app.config['UPLOAD_FOLDER'], f_name))
-
-    new_inc = Incident(incident_type=final_type, latitude=float(lat), longitude=float(lng), image_url=f_name, confidence=95.0)
-    
-    # Create Notification for Officials
-    new_notif = Notification(message=f"New {final_type} reported at {lat}, {lng}!")
-    
-    db.session.add(new_inc)
-    db.session.add(new_notif)
-    db.session.commit()
-    return jsonify({"status": "success"})
-
-@app.route('/api/notifications')
-@roles_required('Admin', 'Police', 'Barangay')
-def get_notifications():
-    notifs = Notification.query.order_by(Notification.created_at.desc()).limit(5).all()
-    return jsonify([{"id": n.id, "message": n.message, "time": n.created_at.strftime('%H:%M')} for n in notifs])
-
-# --- AUTH ---
 @app.route('/api/register', methods=['POST'])
 def register():
     uname = request.form.get('username')
@@ -140,12 +142,6 @@ def register_page(): return render_template('register.html')
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
-
-@app.route('/api/incidents')
-@login_required
-def get_incidents_api():
-    inc = Incident.query.all()
-    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type} for i in inc])
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
