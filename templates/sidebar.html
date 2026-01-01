@@ -9,7 +9,7 @@
     {% endif %}
 
     {% if current_user.role in ['Resident', 'Barangay'] %}
-    <a href="/contact" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/contact' %}bg-primary{% endif %}">📞 Emergency Contacts</a>
+    <a href="/contact" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/contact' %}bg-primary{% endif %}">📞 Hotlines</a>
     {% endif %}
 
     {% if current_user.role == 'Admin' %}
@@ -17,5 +17,9 @@
     <a href="/cnn-admin" class="d-block py-2 px-4 text-info text-decoration-none {% if request.path == '/cnn-admin' %}bg-dark{% endif %}">⚙️ CNN Management</a>
     {% endif %}
 
-    <a href="/logout" class="d-block py-2 px-4 text-danger text-decoration-none mt-5">Sign Out</a>
+    <div class="px-4 mt-5">
+        <div class="small text-muted mb-2">Logged in as:</div>
+        <div class="badge bg-secondary">{{ current_user.username }} ({{ current_user.role }})</div>
+        <a href="/logout" class="btn btn-sm btn-outline-danger mt-3 w-100">Sign Out</a>
+    </div>
 </div>
