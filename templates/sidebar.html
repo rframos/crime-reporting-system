@@ -13,8 +13,8 @@
     {% endif %}
 
     {% if current_user.role == 'Admin' %}
-    <hr>
-    <a href="/cnn-admin" class="d-block py-2 px-4 text-info text-decoration-none {% if request.path == '/cnn-admin' %}bg-dark{% endif %}">⚙️ AI Management</a>
+    <hr style="border-color: rgba(255,255,255,0.1)">
+    <a href="/cnn-admin" class="d-block py-2 px-4 text-info text-decoration-none {% if request.path == '/cnn-admin' %}bg-dark{% endif %}">⚙️ CNN Management</a>
     {% endif %}
 
     <a href="/logout" class="d-block py-2 px-4 text-danger text-decoration-none mt-5">Sign Out</a>
