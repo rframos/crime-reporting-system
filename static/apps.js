@@ -1,3 +1,4 @@
+// Center: San Jose del Monte, Bulacan
 var map = L.map('map').setView([14.8091, 121.0459], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -16,22 +17,19 @@ function loadIncidents() {
     .then(data => {
         data.forEach(inc => {
             L.marker([inc.lat, inc.lng]).addTo(map)
-                .bindPopup(`<b>${inc.type}</b><br>${inc.description}<br><small>${inc.status}</small>`);
+                .bindPopup(`<b>${inc.type}</b><br>${inc.description}<br>Status: ${inc.status}`);
         });
     });
 }
 
 document.getElementById('incidentForm').onsubmit = function(e) {
     e.preventDefault();
-    const formData = new FormData(this);
-    fetch('/api/report', { method: 'POST', body: formData })
+    fetch('/api/report', { method: 'POST', body: new FormData(this) })
     .then(res => res.json())
     .then(data => {
         if(data.status === 'success') {
-            alert("Record Saved!");
+            alert("Incident Reported Successfully!");
             location.reload();
-        } else {
-            alert("Error: " + data.message);
         }
     });
 };
