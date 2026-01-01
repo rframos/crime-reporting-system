@@ -1,23 +1,20 @@
-<div class="sidebar">
-    <div class="sidebar-brand text-center fw-bold mb-4">SafeCity SJDM</div>
-    <a href="/" class="{% if request.path == '/' %}active{% endif %}">Map Dashboard</a>
+<div class="sidebar" style="height: 100vh; background: #2c3e50; color: white; padding: 20px; position: fixed; width: 260px;">
+    <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
     
-    {% if current_user.role != 'Resident' %}
-    <a href="/reports" class="{% if request.path == '/reports' %}active{% endif %}">Incident Reports</a>
+    <a href="/" class="d-block p-2 text-white text-decoration-none border-bottom">📍 Map Dashboard</a>
+
+    {% if current_user.role in ['Admin', 'Police', 'Barangay'] %}
+    <a href="/heatmap" class="d-block p-2 text-white text-decoration-none border-bottom">🔥 Crime Heatmap</a>
+    <a href="/reports" class="d-block p-2 text-white text-decoration-none border-bottom">📋 Incident Reports</a>
     {% endif %}
 
-    {% if current_user.role in ['Admin', 'Police', 'Official'] %}
-    <a href="/heatmap" class="{% if request.path == '/heatmap' %}active{% endif %}">Crime Heatmap</a>
+    {% if current_user.role in ['Resident', 'Barangay'] %}
+    <a href="/contact" class="d-block p-2 text-white text-decoration-none border-bottom">📞 Emergency Contacts</a>
     {% endif %}
 
     {% if current_user.role == 'Admin' %}
-    <a href="/cnn-admin" class="{% if request.path == '/cnn-admin' %}active{% endif %}">CNN Management</a>
-    <a href="/ai-testing" class="{% if request.path == '/ai-testing' %}active{% endif %}">AI Sandbox (Test)</a>
+    <a href="/cnn-admin" class="d-block p-2 text-info text-decoration-none border-bottom">⚙️ AI Training</a>
     {% endif %}
 
-    <div class="user-info mt-5 p-3 small border-top">
-        <p class="mb-0">User: <b>{{ current_user.username }}</b></p>
-        <p class="text-muted">Role: {{ current_user.role }}</p>
-        <a href="/logout" class="text-danger">Sign Out</a>
-    </div>
+    <a href="/logout" class="d-block p-2 text-danger text-decoration-none mt-5">Logout ({{ current_user.username }})</a>
 </div>
