@@ -11,25 +11,27 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from tensorflow.keras import backend as K
 
-# --- CONFIGURATION ---
+# --- CONFIG ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
-app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full_secure'
+app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///local.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['MODEL_PATH'] = os.path.join(base_dir, 'crime_model.h5')
 
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login_page'
 
-# --- DATABASE MODELS ---
+# --- MODELS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='Resident') 
+    role = db.Column(db.String(20), default='Resident') # Admin, Police, Barangay, Resident
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -67,31 +69,15 @@ def index():
     return render_template('index.html', categories=Category.query.all())
 
 @app.route('/heatmap')
-@roles_required('Admin', 'Police')
+@roles_required('Admin', 'Police', 'Barangay')
 def heatmap_page():
     return render_template('heatmap.html', categories=Category.query.all())
 
 @app.route('/reports')
-@roles_required('Admin', 'Police')
+@roles_required('Admin', 'Police', 'Barangay')
 def reports():
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
-
-# --- API ENDPOINTS ---
-@app.route('/api/incidents')
-@login_required
-def get_incidents_api():
-    # Fetching all incidents for the heatmap
-    incidents = Incident.query.all()
-    results = []
-    for i in incidents:
-        results.append({
-            "lat": i.latitude,
-            "lng": i.longitude,
-            "type": i.incident_type,
-            "status": i.status
-        })
-    return jsonify(results)
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -112,6 +98,12 @@ def login():
         login_user(user); return jsonify({"status": "success"})
     return jsonify({"status": "error"}), 401
 
+@app.route('/api/incidents')
+@login_required
+def get_incidents_api():
+    incidents = Incident.query.all()
+    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type} for i in incidents])
+
 @app.route('/login')
 def login_page(): return render_template('login.html')
 
@@ -122,6 +114,5 @@ def register_page(): return render_template('register.html')
 def logout(): logout_user(); return redirect(url_for('login_page'))
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    with app.app_context(): db.create_all()
     app.run(debug=True)
