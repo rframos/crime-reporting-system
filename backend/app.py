@@ -60,16 +60,25 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- AI LOGIC (CLASSIFICATION & TRAINING) ---
+# --- HELPERS ---
+def get_dataset_counts():
+    """Returns a dictionary of category names and the number of images in their folders."""
+    counts = {}
+    if os.path.exists(app.config['TRAIN_FOLDER']):
+        for cat_dir in os.listdir(app.config['TRAIN_FOLDER']):
+            path = os.path.join(app.config['TRAIN_FOLDER'], cat_dir)
+            if os.path.isdir(path):
+                counts[cat_dir] = len(os.listdir(path))
+    return counts
+
+# --- AI LOGIC ---
 
 def process_and_classify(image_path):
-    """Used by Residents to classify photos based on the Admin's trained model."""
     if not os.path.exists(app.config['MODEL_PATH']): return None, None
     try:
         K.clear_session()
         model = tf.keras.models.load_model(app.config['MODEL_PATH'])
-        img = cv2.imread(image_path)
-        img = cv2.resize(img, (150, 150))
+        img = cv2.resize(cv2.imread(image_path), (150, 150))
         img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
         res = model.predict(img)
         idx = np.argmax(res)
@@ -79,7 +88,7 @@ def process_and_classify(image_path):
     except: pass
     return None, None
 
-# --- ADMIN API ENDPOINTS ---
+# --- ADMIN API ---
 
 @app.route('/api/admin/add-category', methods=['POST'])
 @login_required
@@ -97,22 +106,29 @@ def add_category():
 def upload_training():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
     cat_name = request.form.get('category')
+    if 'images' not in request.files:
+        return jsonify({"status": "error", "message": "No files selected"}), 400
+    
     files = request.files.getlist('images')
+    cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat_name)
+    os.makedirs(cat_path, exist_ok=True)
+
+    saved = 0
     for f in files:
-        if f: f.save(os.path.join(app.config['TRAIN_FOLDER'], cat_name, secure_filename(f.filename)))
-    return jsonify({"status": "success", "message": f"Added {len(files)} samples to {cat_name}."})
+        if f and f.filename != '':
+            filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{f.filename}")
+            f.save(os.path.join(cat_path, filename))
+            saved += 1
+    return jsonify({"status": "success", "message": f"Saved {saved} images to {cat_name}."})
 
 @app.route('/api/admin/train-model', methods=['POST'])
 @login_required
 def train_model():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
-    
-    # Memory Management: Clear before starting
     K.clear_session()
     
     categories = Category.query.order_by(Category.id).all()
     X, y = [], []
-    
     for i, cat in enumerate(categories):
         cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
         if not os.path.exists(cat_path): continue
@@ -122,12 +138,11 @@ def train_model():
                 X.append(cv2.resize(img, (150, 150)))
                 y.append(i)
 
-    if len(X) < 2: return jsonify({"status": "error", "message": "Need at least 2 categories with images."}), 400
+    if len(X) < 2: return jsonify({"status": "error", "message": "Add images to at least 2 categories first."}), 400
 
     X = np.array(X).astype('float32') / 255.0
     y = np.array(y)
-
-    # Lightweight Model Architecture to prevent Cloud OOM/Kills
+    
     model = tf.keras.models.Sequential([
         tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(150, 150, 3)),
         tf.keras.layers.MaxPooling2D(2,2),
@@ -135,20 +150,14 @@ def train_model():
         tf.keras.layers.Dense(32, activation='relu'),
         tf.keras.layers.Dense(len(categories), activation='softmax')
     ])
-    
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-    
-    # Small batch size to save RAM
     model.fit(X, y, epochs=10, batch_size=4, verbose=0)
     model.save(app.config['MODEL_PATH'])
     
-    # Cleanup Memory
     K.clear_session()
-    del X, y, model
-    
-    return jsonify({"status": "success", "message": "Model trained and deployed!"})
+    return jsonify({"status": "success", "message": "CNN model published successfully!"})
 
-# --- GENERAL ROUTES ---
+# --- PAGE ROUTES ---
 
 @app.route('/')
 @login_required
@@ -164,7 +173,7 @@ def reports():
 @login_required
 def cnn_admin():
     if current_user.role != 'Admin': return redirect(url_for('index'))
-    return render_template('cnn_admin.html', categories=Category.query.all())
+    return render_template('cnn_admin.html', categories=Category.query.all(), counts=get_dataset_counts())
 
 @app.route('/api/report', methods=['POST'])
 @login_required
@@ -190,7 +199,6 @@ def create_report():
     return jsonify({"status": "success", "classified_as": final_type})
 
 # --- AUTH ---
-
 @app.route('/login')
 def login_page(): return render_template('login.html')
 
@@ -218,7 +226,7 @@ def reset_db():
         db.session.add(Category(name=n, severity=s))
         os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], n), exist_ok=True)
     db.session.commit()
-    return "Database Reset Success"
+    return "Reset Done"
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
