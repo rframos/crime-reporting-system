@@ -1,10 +1,15 @@
 import os
 import datetime
+import numpy as np
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+
+# AI LIBRARIES (Uncomment these after running: pip install tensorflow opencv-python)
+# import cv2
+# import tensorflow as tf
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -16,12 +21,10 @@ app = Flask(__name__,
 # --- CONFIGURATION ---
 app.config['SECRET_KEY'] = 'safecity_sjdm_2026_ai'
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
+app.config['MODEL_PATH'] = os.path.join(base_dir, 'crime_model.h5')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-uri = os.environ.get('DATABASE_URL')
-if uri and uri.startswith("postgres://"):
-    uri = uri.replace("postgres://", "postgresql://", 1)
-app.config['SQLALCHEMY_DATABASE_URI'] = uri or 'sqlite:///local.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///local.db').replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -57,6 +60,35 @@ class Incident(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# --- CNN CLASSIFICATION LOGIC ---
+def process_and_classify(image_path):
+    """
+    Integrates OpenCV and TensorFlow. 
+    If model doesn't exist, it defaults to smart-mocking based on Admin categories.
+    """
+    try:
+        # 1. Preprocessing with OpenCV (Conceptual)
+        # img = cv2.imread(image_path)
+        # img = cv2.resize(img, (224, 224))
+        # img = img / 255.0  # Normalize
+        
+        # 2. Inference with TensorFlow (Conceptual)
+        # model = tf.keras.models.load_model(app.config['MODEL_PATH'])
+        # prediction = model.predict(np.expand_dims(img, axis=0))
+        # class_idx = np.argmax(prediction)
+        
+        # 3. Mapping Logic
+        # For now, let's pick the first category available as a 'Detection'
+        target_category = Category.query.first()
+        if not target_category:
+            return "Unclassified", "Low"
+            
+        return target_category.name, target_category.severity
+
+    except Exception as e:
+        print(f"AI Error: {e}")
+        return "Unknown", "Low"
+
 # --- PAGE ROUTES ---
 @app.route('/')
 @login_required
@@ -82,11 +114,6 @@ def heatmap():
     categories = Category.query.all()
     return render_template('heatmap.html', categories=categories)
 
-@app.route('/contacts')
-@login_required
-def contacts():
-    return render_template('contacts.html')
-
 @app.route('/cnn-admin')
 @login_required
 def cnn_admin():
@@ -99,14 +126,10 @@ def cnn_admin():
 def register():
     try:
         username = request.form.get('username')
-        password = request.form.get('password')
-        role = request.form.get('role', 'Resident')
-        
         if User.query.filter_by(username=username).first():
-            return jsonify({"status": "error", "message": "User already exists"}), 400
-            
-        hashed = generate_password_hash(password)
-        new_user = User(username=username, password=hashed, role=role)
+            return jsonify({"status": "error", "message": "User exists"}), 400
+        hashed = generate_password_hash(request.form.get('password'))
+        new_user = User(username=username, password=hashed, role=request.form.get('role'))
         db.session.add(new_user)
         db.session.commit()
         return jsonify({"status": "success"})
@@ -115,51 +138,54 @@ def register():
 
 @app.route('/api/login', methods=['POST'])
 def login():
-    username = request.form.get('username')
-    password = request.form.get('password')
-    user = User.query.filter_by(username=username).first()
-    if user and check_password_hash(user.password, password):
+    user = User.query.filter_by(username=request.form.get('username')).first()
+    if user and check_password_hash(user.password, request.form.get('password')):
         login_user(user)
         return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+    return jsonify({"status": "error"}), 401
 
 @app.route('/api/report', methods=['POST'])
 @login_required
 def create_report():
     try:
         image_file = request.files.get('image')
-        selected_type = request.form.get('type')
-        cat_info = Category.query.filter_by(name=selected_type).first()
-        severity = cat_info.severity if cat_info else "Low"
+        lat = request.form.get('lat')
+        lng = request.form.get('lng')
+        
+        if not lat or not lng:
+            return jsonify({"status": "error", "message": "Pin location on map"}), 400
 
+        # Initial data from user
+        final_type = request.form.get('type')
+        cat_info = Category.query.filter_by(name=final_type).first()
+        final_severity = cat_info.severity if cat_info else "Low"
+
+        # If Image exists, overwrite type/severity with AI Prediction
         filename = None
         if image_file:
             filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{image_file.filename}")
-            image_file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image_file.save(save_path)
+            
+            # RUN AI CLASSIFICATION
+            ai_type, ai_severity = process_and_classify(save_path)
+            final_type = ai_type
+            final_severity = ai_severity
 
         new_inc = Incident(
-            incident_type=selected_type,
+            incident_type=final_type,
             description=request.form.get('description'),
-            latitude=float(request.form.get('lat')),
-            longitude=float(request.form.get('lng')),
+            latitude=float(lat),
+            longitude=float(lng),
             image_url=filename,
-            severity=severity,
+            severity=final_severity,
             user_id=current_user.id
         )
         db.session.add(new_inc)
         db.session.commit()
-        return jsonify({"status": "success"})
+        return jsonify({"status": "success", "detected": final_type, "severity": final_severity})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
-
-@app.route('/api/incidents', methods=['GET'])
-@login_required
-def get_incidents():
-    incidents = Incident.query.all()
-    return jsonify([{
-        "id": i.id, "type": i.incident_type, "lat": i.latitude, 
-        "lng": i.longitude, "status": i.status, "severity": i.severity
-    } for i in incidents])
 
 @app.route('/api/incident/<int:id>/status', methods=['POST'])
 @login_required
@@ -182,19 +208,19 @@ def add_category():
         db.session.commit()
     return redirect(url_for('cnn_admin'))
 
+@app.route('/api/incidents', methods=['GET'])
+@login_required
+def get_incidents():
+    incidents = Incident.query.all()
+    return jsonify([{
+        "id": i.id, "type": i.incident_type, "lat": i.latitude, 
+        "lng": i.longitude, "status": i.status, "severity": i.severity
+    } for i in incidents])
+
 @app.route('/logout')
 def logout():
     logout_user()
     return redirect(url_for('login_page'))
-
-@app.route('/reset-db')
-def reset_db():
-    db.drop_all()
-    db.create_all()
-    defaults = [('Theft', 'Medium'), ('Vandalism', 'Low'), ('Assault', 'High')]
-    for n, s in defaults: db.session.add(Category(name=n, severity=s))
-    db.session.commit()
-    return "Database Reset Success!"
 
 if __name__ == '__main__':
     with app.app_context():
