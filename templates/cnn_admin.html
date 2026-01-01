@@ -1,85 +1,74 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>SafeCity SJDM | CNN Management</title>
+    <title>SafeCity | CNN Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
-        .main-content { margin-left: 260px; padding: 40px; }
-        .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
-        .gallery-img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; }
-        .btn-delete-img { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; }
-        .gallery-item { position: relative; }
-    </style>
+    <style>.main-content { margin-left: 260px; padding: 40px; } .card { border-radius: 15px; border: none; }</style>
 </head>
-<body>
+<body class="bg-light">
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <h2 class="fw-bold mb-4">CNN Intelligence Control</h2>
+        <h2 class="fw-bold mb-4">⚙️ CNN Intelligence Management</h2>
+
         <div class="row">
-            <div class="col-lg-7">
-                <div class="card p-4">
-                    <h5 class="fw-bold mb-3">1. Upload Training Data</h5>
-                    <form id="uploadForm" enctype="multipart/form-data">
-                        <div class="row g-2">
-                            <div class="col-md-5">
-                                <select name="category" class="form-select" required>
-                                    {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-5"><input type="file" name="images" class="form-control" multiple required></div>
-                            <div class="col-md-2"><button type="submit" class="btn btn-primary w-100">Upload</button></div>
+            <div class="col-md-5">
+                <div class="card shadow-sm p-4 mb-4">
+                    <h5 class="fw-bold">Add Incident Type</h5>
+                    <form action="/api/categories" method="POST">
+                        <div class="mb-3"><label>Category Name</label><input type="text" name="name" class="form-control" placeholder="e.g., Robbery" required></div>
+                        <div class="mb-3"><label>Severity Level</label>
+                            <select name="severity" class="form-select">
+                                <option value="Low">Low</option>
+                                <option value="Medium">Medium</option>
+                                <option value="High">High</option>
+                                <option value="Critical">Critical</option>
+                            </select>
                         </div>
+                        <button class="btn btn-primary w-100">Create Category</button>
                     </form>
                 </div>
-                <div class="card p-4 bg-light text-center">
-                    <h5 class="fw-bold">2. Training Control</h5>
-                    <div id="statusBadge" class="badge bg-secondary mb-3 p-2">Status: Idle</div>
-                    <button onclick="startTraining()" id="trainBtn" class="btn btn-success btn-lg w-100 fw-bold">START TRAINING</button>
+
+                <div class="card shadow-sm p-4">
+                    <h5 class="fw-bold">Active Model Status</h5>
+                    <div class="d-flex justify-content-between">
+                        <span>Status: <span class="badge bg-success">Online</span></span>
+                        <span>Version: 2026.1.0</span>
+                    </div>
+                    <button class="btn btn-dark mt-3 w-100" onclick="alert('Starting re-training process...')">🚀 Re-Train Model</button>
                 </div>
             </div>
-            <div class="col-lg-5">
-                <div class="card p-4">
-                    <h5 class="fw-bold mb-3">Dataset Gallery</h5>
-                    <select id="gallerySelect" class="form-select mb-3" onchange="loadGallery(this.value)">
-                        <option value="">-- View Folder --</option>
-                        {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }} ({{ counts[cat.name] or 0 }})</option>{% endfor %}
-                    </select>
-                    <div id="galleryGrid" class="row g-2" style="max-height: 400px; overflow-y: auto;"></div>
+
+            <div class="col-md-7">
+                <div class="card shadow-sm p-4">
+                    <h5 class="fw-bold">Upload Training Data (CNN)</h5>
+                    <p class="text-muted small">Upload multiple images to a specific category to improve detection accuracy.</p>
+                    <form action="/api/upload-training" method="POST" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label>Select Category</label>
+                            <select name="category" class="form-select">
+                                {% for cat in categories %}<option value="{{cat.name}}">{{cat.name}}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3"><label>Images</label><input type="file" name="images" class="form-control" multiple required></div>
+                        <button class="btn btn-success w-100">Upload to Training Set</button>
+                    </form>
+                    <hr>
+                    <h6 class="fw-bold mt-3">Dataset Statistics</h6>
+                    <table class="table table-sm mt-2">
+                        <thead><tr><th>Category</th><th>Severity</th><th>Images Collected</th></tr></thead>
+                        <tbody>
+                            {% for cat in categories %}
+                            <tr>
+                                <td>{{cat.name}}</td>
+                                <td><span class="badge bg-secondary">{{cat.severity}}</span></td>
+                                <td>{{ counts[cat.name] }} photos</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
-    <script>
-        async function checkStatus() {
-            const res = await fetch('/api/admin/train-status');
-            const data = await res.json();
-            document.getElementById('statusBadge').innerText = "Status: " + data.status;
-        }
-        setInterval(checkStatus, 3000);
-        async function startTraining() { await fetch('/api/admin/train-model', { method: 'POST' }); }
-        async function loadGallery(catName) {
-            const grid = document.getElementById('galleryGrid');
-            if(!catName) { grid.innerHTML = ''; return; }
-            const res = await fetch(`/api/admin/gallery/${catName}`);
-            const images = await res.json();
-            grid.innerHTML = images.map(img => `
-                <div class="col-4 gallery-item">
-                    <button class="btn-delete-img" onclick="deleteImage('${catName}', '${img}')">×</button>
-                    <img src="/static/training_data/${catName}/${img}" class="gallery-img">
-                </div>
-            `).join('');
-        }
-        async function deleteImage(cat, file) {
-            if(!confirm("Delete?")) return;
-            await fetch('/api/admin/delete-training-image', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({category: cat, filename: file})
-            });
-            loadGallery(cat);
-        }
-    </script>
 </body>
 </html>
