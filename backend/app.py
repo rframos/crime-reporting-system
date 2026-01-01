@@ -8,6 +8,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from sqlalchemy import text
 
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
@@ -48,7 +49,7 @@ class Incident(db.Model):
     status = db.Column(db.String(20), default='Pending')
     severity = db.Column(db.String(20), default='Low')
     image_url = db.Column(db.String(255), nullable=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'))
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 @login_manager.user_loader
@@ -69,7 +70,7 @@ def process_and_classify(image_path):
     except: pass
     return None, None
 
-# --- PAGE ROUTES ---
+# --- ROUTES ---
 @app.route('/')
 @login_required
 def index():
@@ -97,13 +98,13 @@ def cnn_admin():
     if current_user.role != 'Admin': return redirect(url_for('index'))
     return render_template('cnn_admin.html', categories=Category.query.order_by(Category.id).all())
 
-# --- API ROUTES ---
+# --- API ---
 @app.route('/api/register', methods=['POST'])
 def register():
     try:
         username = request.form.get('username')
         if User.query.filter_by(username=username).first():
-            return jsonify({"status": "error", "message": "User already exists"}), 400
+            return jsonify({"status": "error", "message": "Username taken"}), 400
         hashed = generate_password_hash(request.form.get('password'))
         new_user = User(username=username, password=hashed, role=request.form.get('role'))
         db.session.add(new_user); db.session.commit()
@@ -120,29 +121,27 @@ def login():
 @app.route('/api/report', methods=['POST'])
 @login_required
 def create_report():
-    try:
-        img = request.files.get('image')
-        lat, lng = request.form.get('lat'), request.form.get('lng')
-        if not lat or not lng: return jsonify({"status": "error", "message": "Pin location"}), 400
-        
-        final_type = request.form.get('type')
-        cat = Category.query.filter_by(name=final_type).first()
-        final_sev = cat.severity if cat else "Low"
-        filename = None
-        
-        if img:
-            filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
-            path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            img.save(path)
-            ai_t, ai_s = process_and_classify(path)
-            if ai_t: final_type, final_sev = ai_t, ai_s
+    img = request.files.get('image')
+    lat, lng = request.form.get('lat'), request.form.get('lng')
+    if not lat or not lng: return jsonify({"status": "error", "message": "Pin location"}), 400
+    
+    final_type = request.form.get('type')
+    cat = Category.query.filter_by(name=final_type).first()
+    final_sev = cat.severity if cat else "Low"
+    filename = None
+    
+    if img:
+        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
+        path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        img.save(path)
+        ai_t, ai_s = process_and_classify(path)
+        if ai_t: final_type, final_sev = ai_t, ai_s
 
-        new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
-                        latitude=float(lat), longitude=float(lng), image_url=filename,
-                        severity=final_sev, user_id=current_user.id)
-        db.session.add(new_inc); db.session.commit()
-        return jsonify({"status": "success"})
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 400
+    new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
+                    latitude=float(lat), longitude=float(lng), image_url=filename,
+                    severity=final_sev, user_id=current_user.id)
+    db.session.add(new_inc); db.session.commit()
+    return jsonify({"status": "success"})
 
 @app.route('/api/categories', methods=['POST'])
 @login_required
@@ -168,13 +167,19 @@ def logout(): logout_user(); return redirect(url_for('login_page'))
 def reset_db():
     try:
         db.session.remove()
-        db.drop_all()
+        # Direct SQL for PostgreSQL CASCADE support
+        db.session.execute(text('DROP TABLE IF EXISTS incidents CASCADE;'))
+        db.session.execute(text('DROP TABLE IF EXISTS "user" CASCADE;'))
+        db.session.execute(text('DROP TABLE IF EXISTS category CASCADE;'))
+        db.session.commit()
         db.create_all()
+        # Seed
         for n, s in [('Theft','Medium'), ('Fire','Critical'), ('Vandalism','Low')]:
             db.session.add(Category(name=n, severity=s))
         db.session.commit()
-        return "Database Ready! Tables recreated and default categories added."
+        return "Database Cleaned & Recreated Successfully!"
     except Exception as e:
+        db.session.rollback()
         return f"Error resetting database: {str(e)}"
 
 if __name__ == '__main__':
