@@ -10,7 +10,6 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
-# --- CONFIG ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
 app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full'
@@ -48,11 +47,6 @@ class Incident(db.Model):
     image_url = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
-class Notification(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    message = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
-
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
@@ -66,28 +60,28 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- CNN & CATEGORY ROUTES ---
+# --- CNN ADMIN ROUTES ---
 @app.route('/cnn-admin')
 @roles_required('Admin')
 def cnn_admin():
     categories = Category.query.all()
-    # Count images per category
-    counts = {}
+    dataset = {}
     for cat in categories:
         cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
-        counts[cat.name] = len(os.listdir(cat_path)) if os.path.exists(cat_path) else 0
-    return render_template('cnn_admin.html', categories=categories, counts=counts)
+        if os.path.exists(cat_path):
+            dataset[cat.name] = os.listdir(cat_path)
+        else:
+            dataset[cat.name] = []
+    return render_template('cnn_admin.html', categories=categories, dataset=dataset)
 
 @app.route('/api/categories', methods=['POST'])
 @roles_required('Admin')
 def add_category():
-    name = request.form.get('name')
+    name = request.form.get('name').strip()
     severity = request.form.get('severity')
-    if not Category.query.filter_by(name=name).first():
-        new_cat = Category(name=name, severity=severity)
-        db.session.add(new_cat)
+    if name and not Category.query.filter_by(name=name).first():
+        db.session.add(Category(name=name, severity=severity))
         db.session.commit()
-        # Create folder for images
         os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], name), exist_ok=True)
     return redirect(url_for('cnn_admin'))
 
@@ -97,14 +91,29 @@ def upload_training():
     cat_name = request.form.get('category')
     files = request.files.getlist('images')
     cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat_name)
-    os.makedirs(cat_path, exist_ok=True)
-    
     for f in files:
-        if f:
-            f.save(os.path.join(cat_path, secure_filename(f.filename)))
+        if f: f.save(os.path.join(cat_path, secure_filename(f.filename)))
     return redirect(url_for('cnn_admin'))
 
-# --- CORE ROUTES ---
+@app.route('/api/delete-training-img', methods=['POST'])
+@roles_required('Admin')
+def delete_training_img():
+    data = request.json
+    file_path = os.path.join(app.config['TRAIN_FOLDER'], data['category'], data['filename'])
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error"}), 404
+
+@app.route('/api/train-model', methods=['POST'])
+@roles_required('Admin')
+def train_model():
+    # Placeholder for actual TensorFlow training script
+    # Logic would involve: loading TRAIN_FOLDER images, label encoding, 
+    # building a Sequential model, and saving as 'crime_model.h5'
+    return jsonify({"status": "success", "message": "Training started in background."})
+
+# --- GENERAL ROUTES ---
 @app.route('/')
 @login_required
 def index(): return render_template('index.html', categories=Category.query.all())
@@ -115,10 +124,11 @@ def reports():
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
 
-@app.route('/reset-db')
-def reset_db():
-    db.drop_all(); db.create_all()
-    return "Database Reset. Go to /register to create your Admin."
+@app.route('/login')
+def login_page(): return render_template('login.html')
+
+@app.route('/register')
+def register_page(): return render_template('register.html')
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -133,12 +143,6 @@ def login():
     if user and check_password_hash(user.password, request.form.get('password')):
         login_user(user); return jsonify({"status": "success"})
     return jsonify({"status": "error"}), 401
-
-@app.route('/login')
-def login_page(): return render_template('login.html')
-
-@app.route('/register')
-def register_page(): return render_template('register.html')
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
