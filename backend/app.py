@@ -15,11 +15,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from tensorflow.keras import backend as K
 
-# --- INITIAL SETUP ---
+# --- SETUP ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
 
-app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full_v1'
+app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full'
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['TRAIN_FOLDER'] = os.path.join(base_dir, 'static/training_data')
 app.config['MODEL_PATH'] = os.path.join(base_dir, 'crime_model.h5')
@@ -38,7 +38,7 @@ login_manager.login_view = 'login_page'
 
 training_info = {"status": "Idle", "last_run": "Never"}
 
-# --- DATABASE MODELS ---
+# --- MODELS ---
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -66,7 +66,7 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- ACCESS CONTROL (RBAC) ---
+# --- RBAC DECORATOR ---
 def roles_required(*roles):
     def decorator(f):
         @wraps(f)
@@ -78,7 +78,7 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- AI CORE LOGIC ---
+# --- AI CLASSIFICATION ---
 def process_and_classify(image_path):
     if not os.path.exists(app.config['MODEL_PATH']): return None, None, 0
     try:
@@ -96,7 +96,7 @@ def process_and_classify(image_path):
     except: pass
     return None, None, 0
 
-# --- PAGE ROUTES ---
+# --- ROUTES ---
 @app.route('/')
 @login_required
 def index(): 
@@ -128,7 +128,7 @@ def cnn_admin():
             if os.path.isdir(p): counts[d] = len(os.listdir(p))
     return render_template('cnn_admin.html', categories=Category.query.all(), counts=counts)
 
-# --- API ENDPOINTS ---
+# --- API ---
 @app.route('/api/incidents')
 @login_required
 def get_incidents_api():
@@ -155,7 +155,7 @@ def create_report():
     db.session.add(new_inc); db.session.commit()
     return jsonify({"status": "success", "classified_as": final_type, "confidence": f_conf})
 
-# --- CNN MANAGEMENT API ---
+# --- CNN GALLERY API ---
 @app.route('/api/admin/gallery/<category_name>')
 @login_required
 def get_gallery(category_name):
@@ -175,18 +175,21 @@ def delete_training_image():
 @login_required
 def train_status(): return jsonify(training_info)
 
-# --- SYSTEM TOOLS ---
+# --- AUTH & SETUP ---
 @app.route('/reset-db')
 def reset_db():
     if os.path.exists(app.config['TRAIN_FOLDER']): shutil.rmtree(app.config['TRAIN_FOLDER'])
     os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
     db.drop_all(); db.create_all()
-    # Initial Admin & Category for testing
+    # Seed Data
     admin = User(username='admin', password=generate_password_hash('admin123'), role='Admin')
-    db.session.add(admin)
-    db.session.add(Category(name='Theft', severity='Medium'))
+    police = User(username='police', password=generate_password_hash('police123'), role='Police')
+    db.session.add_all([admin, police, Category(name='Theft', severity='Medium')])
     db.session.commit()
-    return "Database Reset Successful. Login with admin/admin123"
+    return "Database Reset. Users: admin/admin123, police/police123"
+
+@app.route('/login')
+def login_page(): return render_template('login.html')
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -197,9 +200,6 @@ def login():
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
-
-@app.route('/login')
-def login_page(): return render_template('login.html')
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
