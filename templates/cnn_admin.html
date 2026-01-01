@@ -11,8 +11,19 @@
         .sidebar a.active { background: #3498db; color: white; border-left: 5px solid white; }
         .main-content { margin-left: 260px; padding: 40px; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
-        .gallery-img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; }
-        .gallery-container { max-height: 400px; overflow-y: auto; padding: 10px; background: #fff; border-radius: 10px; }
+        
+        /* Gallery Styles */
+        .gallery-item { position: relative; margin-bottom: 10px; }
+        .gallery-img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; cursor: zoom-in; border: 1px solid #eee; }
+        .btn-delete-img { 
+            position: absolute; top: 5px; right: 5px; 
+            background: rgba(220, 53, 69, 0.9); color: white; 
+            border: none; border-radius: 50%; width: 22px; height: 22px; 
+            font-size: 14px; line-height: 1; cursor: pointer; 
+            display: flex; align-items: center; justify-content: center;
+        }
+        .btn-delete-img:hover { background: #dc3545; transform: scale(1.1); }
+        .gallery-container { max-height: 450px; overflow-y: auto; padding: 15px; background: #fff; border-radius: 10px; border: 1px solid #eee; }
     </style>
 </head>
 <body>
@@ -49,7 +60,7 @@
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="row g-2">
                             <div class="col-md-5">
-                                <select name="category" class="form-select" required>
+                                <select id="uploadCatSelect" name="category" class="form-select" required>
                                     {% for cat in categories %}
                                     <option value="{{ cat.name }}">{{ cat.name }}</option>
                                     {% endfor %}
@@ -61,26 +72,28 @@
                     </form>
                 </div>
 
-                <div class="card p-4 bg-light">
-                    <h5 class="fw-bold mb-3">3. Train & Deploy Model</h5>
-                    <p class="small text-muted">Compiles all images below into the <code>crime_model.h5</code> file.</p>
+                <div class="card p-4 bg-light text-center">
+                    <h5 class="fw-bold mb-3">3. Finalize & Publish</h5>
+                    <p class="small text-muted">Overwrites <code>crime_model.h5</code> with current dataset.</p>
                     <button onclick="trainModel()" id="trainBtn" class="btn btn-success btn-lg w-100 fw-bold">PUBLISH MODEL</button>
-                    <div id="trainStatus" class="mt-2 text-center small fw-bold"></div>
+                    <div id="trainStatus" class="mt-2 small fw-bold text-primary"></div>
                 </div>
             </div>
 
             <div class="col-lg-5">
                 <div class="card p-4">
-                    <h5 class="fw-bold mb-3">Dataset Gallery</h5>
+                    <h5 class="fw-bold mb-3">Dataset Curation</h5>
+                    <label class="small fw-bold text-muted">View/Clean Category Folder:</label>
                     <select id="gallerySelect" class="form-select mb-3" onchange="loadGallery(this.value)">
-                        <option value="">Select a category to view images...</option>
+                        <option value="">-- Choose Category --</option>
                         {% for cat in categories %}
-                        <option value="{{ cat.name }}">{{ cat.name }} ({{ counts[cat.name] or 0 }})</option>
+                        <option value="{{ cat.name }}">{{ cat.name }} ({{ counts[cat.name] or 0 }} images)</option>
                         {% endfor %}
                     </select>
-                    <div class="gallery-container shadow-sm">
+                    
+                    <div class="gallery-container">
                         <div id="galleryGrid" class="row g-2">
-                            <div class="col-12 text-center text-muted p-5">No images selected</div>
+                            <div class="col-12 text-center text-muted p-5">Select a category to manage images</div>
                         </div>
                     </div>
                 </div>
@@ -91,22 +104,41 @@
     <script>
         async function loadGallery(catName) {
             const grid = document.getElementById('galleryGrid');
-            if(!catName) { grid.innerHTML = '<div class="col-12 text-center text-muted p-5">No images selected</div>'; return; }
+            if(!catName) { grid.innerHTML = '<div class="col-12 text-center text-muted p-5">Select a category to manage images</div>'; return; }
             
-            grid.innerHTML = '<div class="col-12 text-center p-5"><div class="spinner-border text-primary"></div></div>';
+            grid.innerHTML = '<div class="col-12 text-center p-5"><div class="spinner-border text-primary spinner-border-sm"></div></div>';
             const res = await fetch(`/api/admin/gallery/${catName}`);
             const images = await res.json();
             
             grid.innerHTML = '';
             if(images.length === 0) {
-                grid.innerHTML = '<div class="col-12 text-center text-muted p-5">No images in this category</div>';
+                grid.innerHTML = '<div class="col-12 text-center text-muted p-5">Folder is empty</div>';
             } else {
                 images.forEach(img => {
                     grid.innerHTML += `
-                        <div class="col-4">
+                        <div class="col-4 gallery-item">
+                            <button class="btn-delete-img" onclick="deleteImage('${catName}', '${img}')" title="Delete Image">×</button>
                             <img src="/static/training_data/${catName}/${img}" class="gallery-img" onclick="window.open(this.src)">
                         </div>`;
                 });
+            }
+        }
+
+        async function deleteImage(catName, filename) {
+            if(!confirm("Delete this training image?")) return;
+            
+            const res = await fetch('/api/admin/delete-training-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category: catName, filename: filename })
+            });
+            
+            const data = await res.json();
+            if(data.status === 'success') {
+                loadGallery(catName); // Refresh gallery without page reload
+                // Note: To update the count in dropdown, a full reload or manual text update is needed
+            } else {
+                alert(data.message);
             }
         }
 
@@ -122,7 +154,7 @@
             const btn = document.getElementById('trainBtn');
             const status = document.getElementById('trainStatus');
             btn.disabled = true;
-            status.innerText = "Training AI... Please wait (this can take 1-2 minutes).";
+            status.innerText = "Training AI... This usually takes 60-90 seconds.";
             
             const res = await fetch('/api/admin/train-model', { method: 'POST' });
             const data = await res.json();
