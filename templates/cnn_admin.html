@@ -8,6 +8,7 @@
         .sidebar a { color: #bdc3c7; text-decoration: none; padding: 12px 25px; display: block; }
         .sidebar a.active { background: #3498db; color: white; }
         .main-content { margin-left: 260px; padding: 30px; }
+        .card { border-radius: 12px; }
     </style>
 </head>
 <body>
@@ -21,28 +22,43 @@
     </div>
 
     <div class="main-content">
-        <h2 class="fw-bold mb-4">AI Category Management</h2>
-        <div class="card p-4 shadow-sm mb-4">
-            <form action="/api/categories" method="POST" class="row g-2">
-                <div class="col-md-5"><input type="text" name="name" class="form-control" placeholder="Category Name" required></div>
-                <div class="col-md-4">
-                    <select name="severity" class="form-select">
-                        <option value="Low">Low</option><option value="Medium">Medium</option>
-                        <option value="High">High</option><option value="Critical">Critical</option>
-                    </select>
+        <h2 class="fw-bold mb-4">AI Category & CNN Control</h2>
+        
+        <div class="row g-4">
+            <div class="col-md-5">
+                <div class="card p-4 shadow-sm">
+                    <h5 class="fw-bold mb-3">Add AI Class</h5>
+                    <form action="/api/categories" method="POST">
+                        <input type="text" name="name" class="form-control mb-3" placeholder="Category Label (e.g. Theft)" required>
+                        <select name="severity" class="form-select mb-3">
+                            <option value="Low">Low Severity</option>
+                            <option value="Medium">Medium Severity</option>
+                            <option value="High">High Severity</option>
+                            <option value="Critical">Critical Severity</option>
+                        </select>
+                        <button class="btn btn-primary w-100 fw-bold">Register Category</button>
+                    </form>
                 </div>
-                <div class="col-md-3"><button class="btn btn-primary w-100">Add Category</button></div>
-            </form>
-        </div>
+            </div>
 
-        <table class="table table-bordered bg-white shadow-sm">
-            <thead class="table-light"><tr><th>ID</th><th>Label</th><th>Severity</th></tr></thead>
-            <tbody>
-                {% for cat in categories %}
-                <tr><td>{{ cat.id }}</td><td>{{ cat.name }}</td><td>{{ cat.severity }}</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+            <div class="col-md-7">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white fw-bold">Trained Classes (Model Mapping)</div>
+                    <table class="table table-hover align-middle mb-0">
+                        <thead><tr><th>ID</th><th>Class Label</th><th>Default Severity</th></tr></thead>
+                        <tbody>
+                            {% for cat in categories %}
+                            <tr>
+                                <td><code>{{ loop.index0 }}</code></td>
+                                <td class="fw-bold">{{ cat.name }}</td>
+                                <td><span class="badge bg-secondary">{{ cat.severity }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 </body>
 </html>
