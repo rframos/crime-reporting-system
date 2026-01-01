@@ -24,10 +24,9 @@ app.config['SECRET_KEY'] = 'dev_secret_key_123'
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
-login_manager.login_view = 'login_page' # Redirects here if login is required
+login_manager.login_view = 'login_page'
 
 # --- MODELS ---
-
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -42,7 +41,7 @@ class Incident(db.Model):
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
     status = db.Column(db.String(20), default='Pending')
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id')) # Link to reporter
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 @login_manager.user_loader
@@ -50,19 +49,13 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # --- AUTH ROUTES ---
-
-@app.route('/login')
-def login_page():
-    return render_template('index.html', show_auth=True)
-
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.form
-    hashed_pw = generate_password_hash(data.get('password'))
-    
     if User.query.filter_by(username=data.get('username')).first():
         return jsonify({"status": "error", "message": "User already exists"}), 400
     
+    hashed_pw = generate_password_hash(data.get('password'))
     new_user = User(
         username=data.get('username'),
         password=hashed_pw,
@@ -76,11 +69,9 @@ def register():
 def login():
     data = request.form
     user = User.query.filter_by(username=data.get('username')).first()
-    
     if user and check_password_hash(user.password, data.get('password')):
         login_user(user)
         return jsonify({"status": "success", "role": user.role})
-    
     return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
 @app.route('/logout')
@@ -90,7 +81,6 @@ def logout():
     return redirect(url_for('index'))
 
 # --- APP ROUTES ---
-
 @app.route('/')
 def index():
     return render_template('index.html')
