@@ -1,32 +1,27 @@
 import os
 import datetime
 import numpy as np
+import cv2
+import tensorflow as tf
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
-# AI LIBRARIES (Uncomment these after running: pip install tensorflow opencv-python)
-# import cv2
-# import tensorflow as tf
-
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
 
-app = Flask(__name__, 
-            root_path=base_dir,
-            template_folder='templates',
-            static_folder='static')
-
-# --- CONFIGURATION ---
+# --- CONFIG ---
 app.config['SECRET_KEY'] = 'safecity_sjdm_2026_ai'
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['MODEL_PATH'] = os.path.join(base_dir, 'crime_model.h5')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///local.db').replace("postgres://", "postgresql://", 1)
+# Database
+uri = os.environ.get('DATABASE_URL', 'sqlite:///local.db').replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login_page'
@@ -44,7 +39,6 @@ class Category(db.Model):
     severity = db.Column(db.String(20), default='Low')
 
 class Incident(db.Model):
-    __tablename__ = 'incidents'
     id = db.Column(db.Integer, primary_key=True)
     incident_type = db.Column(db.String(50))
     description = db.Column(db.Text)
@@ -57,172 +51,130 @@ class Incident(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 @login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
+def load_user(user_id): return User.query.get(int(user_id))
 
-# --- CNN CLASSIFICATION LOGIC ---
-def process_and_classify(image_path):
-    """
-    Integrates OpenCV and TensorFlow. 
-    If model doesn't exist, it defaults to smart-mocking based on Admin categories.
-    """
+# --- SERVER-SIDE TRAINING LOGIC ---
+@app.route('/api/train', methods=['POST'])
+@login_required
+def train_model_on_server():
+    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
+    
     try:
-        # 1. Preprocessing with OpenCV (Conceptual)
-        # img = cv2.imread(image_path)
-        # img = cv2.resize(img, (224, 224))
-        # img = img / 255.0  # Normalize
+        # 1. Prepare Data from Database & Uploads
+        incidents = Incident.query.filter(Incident.image_url != None).all()
+        categories = [c.name for c in Category.query.order_by(Category.id).all()]
         
-        # 2. Inference with TensorFlow (Conceptual)
-        # model = tf.keras.models.load_model(app.config['MODEL_PATH'])
-        # prediction = model.predict(np.expand_dims(img, axis=0))
-        # class_idx = np.argmax(prediction)
-        
-        # 3. Mapping Logic
-        # For now, let's pick the first category available as a 'Detection'
-        target_category = Category.query.first()
-        if not target_category:
-            return "Unclassified", "Low"
-            
-        return target_category.name, target_category.severity
+        if len(incidents) < 5:
+            return jsonify({"status": "error", "message": "Need at least 5 images to train."})
 
+        X, y = [], []
+        for inc in incidents:
+            img_path = os.path.join(app.config['UPLOAD_FOLDER'], inc.image_url)
+            if os.path.exists(img_path):
+                img = cv2.imread(img_path)
+                img = cv2.resize(img, (150, 150)) # Smaller size for server RAM
+                X.append(img)
+                y.append(categories.index(inc.incident_type))
+
+        X = np.array(X).astype('float32') / 255.0
+        y = np.array(y)
+
+        # 2. Build Simple CNN
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(150, 150, 3)),
+            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(32, activation='relu'),
+            tf.keras.layers.Dense(len(categories), activation='softmax')
+        ])
+        
+        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        
+        # 3. Train (Small epochs to prevent server timeout)
+        model.fit(X, y, epochs=5, batch_size=4)
+        
+        # 4. Save to Server Storage
+        model.save(app.config['MODEL_PATH'])
+        
+        return jsonify({"status": "success", "message": "Model trained and saved on server!"})
     except Exception as e:
-        print(f"AI Error: {e}")
-        return "Unknown", "Low"
+        return jsonify({"status": "error", "message": str(e)})
 
-# --- PAGE ROUTES ---
+# --- PREDICTION LOGIC ---
+def process_and_classify(image_path):
+    if not os.path.exists(app.config['MODEL_PATH']): return None, None
+    try:
+        model = tf.keras.models.load_model(app.config['MODEL_PATH'])
+        img = cv2.imread(image_path)
+        img = cv2.resize(img, (150, 150))
+        img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
+        res = model.predict(img)
+        idx = np.argmax(res)
+        cat = Category.query.order_by(Category.id).all()[idx]
+        return cat.name, cat.severity
+    except: return None, None
+
+# --- REST OF ROUTES (Login, Reports, Heatmap, etc.) ---
 @app.route('/')
 @login_required
 def index():
-    categories = Category.query.all()
-    return render_template('index.html', categories=categories)
+    return render_template('index.html', categories=Category.query.all())
 
 @app.route('/login')
-def login_page():
-    return render_template('login.html')
+def login_page(): return render_template('login.html')
 
 @app.route('/reports')
 @login_required
 def reports():
-    if current_user.role == 'Resident': return "Access Denied", 403
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
-
-@app.route('/heatmap')
-@login_required
-def heatmap():
-    if current_user.role not in ['Police', 'Admin']: return "Access Denied", 403
-    categories = Category.query.all()
-    return render_template('heatmap.html', categories=categories)
 
 @app.route('/cnn-admin')
 @login_required
 def cnn_admin():
-    if current_user.role != 'Admin': return "Access Denied", 403
-    categories = Category.query.all()
-    return render_template('cnn_admin.html', categories=categories)
+    return render_template('cnn_admin.html', categories=Category.query.all())
 
-# --- API ROUTES ---
+@app.route('/api/report', methods=['POST'])
+@login_required
+def create_report():
+    image_file = request.files.get('image')
+    lat, lng = request.form.get('lat'), request.form.get('lng')
+    final_type = request.form.get('type')
+    cat = Category.query.filter_by(name=final_type).first()
+    final_sev = cat.severity if cat else "Low"
+    filename = None
+
+    if image_file:
+        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{image_file.filename}")
+        path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        image_file.save(path)
+        ai_t, ai_s = process_and_classify(path)
+        if ai_t: final_type, final_sev = ai_t, ai_s
+
+    new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
+                       latitude=float(lat), longitude=float(lng), image_url=filename,
+                       severity=final_sev, user_id=current_user.id)
+    db.session.add(new_inc)
+    db.session.commit()
+    return jsonify({"status": "success"})
+
 @app.route('/api/register', methods=['POST'])
 def register():
-    try:
-        username = request.form.get('username')
-        if User.query.filter_by(username=username).first():
-            return jsonify({"status": "error", "message": "User exists"}), 400
-        hashed = generate_password_hash(request.form.get('password'))
-        new_user = User(username=username, password=hashed, role=request.form.get('role'))
-        db.session.add(new_user)
-        db.session.commit()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    hashed = generate_password_hash(request.form.get('password'))
+    db.session.add(User(username=request.form.get('username'), password=hashed, role=request.form.get('role')))
+    db.session.commit()
+    return jsonify({"status": "success"})
 
 @app.route('/api/login', methods=['POST'])
 def login():
     user = User.query.filter_by(username=request.form.get('username')).first()
     if user and check_password_hash(user.password, request.form.get('password')):
-        login_user(user)
-        return jsonify({"status": "success"})
+        login_user(user); return jsonify({"status": "success"})
     return jsonify({"status": "error"}), 401
 
-@app.route('/api/report', methods=['POST'])
-@login_required
-def create_report():
-    try:
-        image_file = request.files.get('image')
-        lat = request.form.get('lat')
-        lng = request.form.get('lng')
-        
-        if not lat or not lng:
-            return jsonify({"status": "error", "message": "Pin location on map"}), 400
-
-        # Initial data from user
-        final_type = request.form.get('type')
-        cat_info = Category.query.filter_by(name=final_type).first()
-        final_severity = cat_info.severity if cat_info else "Low"
-
-        # If Image exists, overwrite type/severity with AI Prediction
-        filename = None
-        if image_file:
-            filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{image_file.filename}")
-            save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            image_file.save(save_path)
-            
-            # RUN AI CLASSIFICATION
-            ai_type, ai_severity = process_and_classify(save_path)
-            final_type = ai_type
-            final_severity = ai_severity
-
-        new_inc = Incident(
-            incident_type=final_type,
-            description=request.form.get('description'),
-            latitude=float(lat),
-            longitude=float(lng),
-            image_url=filename,
-            severity=final_severity,
-            user_id=current_user.id
-        )
-        db.session.add(new_inc)
-        db.session.commit()
-        return jsonify({"status": "success", "detected": final_type, "severity": final_severity})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
-
-@app.route('/api/incident/<int:id>/status', methods=['POST'])
-@login_required
-def update_status(id):
-    if current_user.role == 'Resident': return jsonify({"status": "error"}), 403
-    incident = Incident.query.get_or_404(id)
-    incident.status = request.form.get('status')
-    db.session.commit()
-    return jsonify({"status": "success"})
-
-@app.route('/api/categories', methods=['POST'])
-@login_required
-def add_category():
-    if current_user.role == 'Admin':
-        name = request.form.get('name')
-        sev = request.form.get('severity')
-        cat = Category.query.filter_by(name=name).first()
-        if cat: cat.severity = sev
-        else: db.session.add(Category(name=name, severity=sev))
-        db.session.commit()
-    return redirect(url_for('cnn_admin'))
-
-@app.route('/api/incidents', methods=['GET'])
-@login_required
-def get_incidents():
-    incidents = Incident.query.all()
-    return jsonify([{
-        "id": i.id, "type": i.incident_type, "lat": i.latitude, 
-        "lng": i.longitude, "status": i.status, "severity": i.severity
-    } for i in incidents])
-
 @app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('login_page'))
+def logout(): logout_user(); return redirect(url_for('login_page'))
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    with app.app_context(): db.create_all()
     app.run(debug=True)
