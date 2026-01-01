@@ -16,18 +16,15 @@
     {% include 'sidebar.html' %}
 
     <div class="main-content">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="fw-bold text-danger">Crime Density Heatmap</h2>
-            <div class="badge bg-dark px-3 py-2">Official Access: {{ current_user.role }}</div>
-        </div>
+        <h2 class="fw-bold text-danger mb-4">Crime Density Heatmap</h2>
 
         <div class="filter-panel d-flex align-items-center gap-3">
-            <label class="fw-bold text-muted mb-0">Filter By Category:</label>
+            <label class="fw-bold text-muted mb-0">Filter by Crime Type:</label>
             <select id="typeFilter" class="form-select shadow-sm" style="width: 250px;">
-                <option value="All">Show All Categories</option>
+                <option value="All">All Categories</option>
                 {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
             </select>
-            <span id="dataCount" class="badge bg-primary">Loading...</span>
+            <span id="dataCount" class="badge bg-primary">Calculating...</span>
         </div>
 
         <div id="map"></div>
@@ -50,12 +47,12 @@
         function updateHeatmap(filterType) {
             if (heatLayer) map.removeLayer(heatLayer);
             const filtered = filterType === "All" ? allIncidents : allIncidents.filter(i => i.type === filterType);
-            document.getElementById('dataCount').innerText = `${filtered.length} Points Found`;
+            document.getElementById('dataCount').innerText = `${filtered.length} Data Points`;
             const points = filtered.map(i => [i.lat, i.lng, 0.8]);
             heatLayer = L.heatLayer(points, {radius: 25, blur: 15, maxZoom: 17, gradient: {0.4:'blue', 0.6:'lime', 1:'red'}}).addTo(map);
         }
 
-        document.getElementById('typeFilter').addEventListener('change', e => updateHeatmap(e.target.value));
+        document.getElementById('typeFilter').onchange = e => updateHeatmap(e.target.value);
     </script>
 </body>
 </html>
