@@ -1,46 +1,25 @@
-<div class="sidebar" style="height: 100vh; background: #0f3460; color: white; padding: 20px 0; position: fixed; width: 260px; z-index: 1000;">
-    <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
-    
-    <a href="/" class="d-block py-3 px-4 text-white text-decoration-none border-bottom">📍 Map Dashboard</a>
-
-    {% if current_user.role in ['Admin', 'Police', 'Barangay'] %}
-    <a href="/heatmap" class="d-block py-3 px-4 text-white text-decoration-none border-bottom">🔥 Crime Heatmap</a>
-    <a href="/reports" class="d-block py-3 px-4 text-white text-decoration-none border-bottom">📋 Incident Logs</a>
-
-    <div class="px-4 mt-4">
-        <h6 class="small fw-bold text-uppercase text-muted">Recent Alerts 🔔</h6>
-        <div id="notif-inbox" style="max-height: 200px; overflow-y: auto;">
-            <p class="small text-muted">Checking for alerts...</p>
-        </div>
+<div class="sidebar" style="height: 100vh; background: #0038A8; color: white; padding: 20px 0; position: fixed; width: 260px; z-index: 1000; border-right: 4px solid #FFD700;">
+    <div class="text-center mb-4">
+        <h4 class="fw-bold" style="color: #FFD700;">SafeCity SJDM</h4>
+        <small class="text-light opacity-75">Rising City of Bulacan</small>
     </div>
-    {% endif %}
+    
+    <nav class="nav flex-column">
+        <a href="/" class="nav-link text-white py-3 px-4 border-bottom border-primary {% if request.path == '/' %}bg-warning text-dark{% endif %}">📍 Report Map</a>
+        <a href="/heatmap" class="nav-link text-white py-3 px-4 border-bottom border-primary {% if request.path == '/heatmap' %}bg-warning text-dark{% endif %}">🔥 Crime Heatmap</a>
+        <a href="/reports" class="nav-link text-white py-3 px-4 border-bottom border-primary {% if request.path == '/reports' %}bg-warning text-dark{% endif %}">📋 Incident Logs</a>
+        <a href="/contacts" class="nav-link text-white py-3 px-4 border-bottom border-primary {% if request.path == '/contacts' %}bg-warning text-dark{% endif %}">📞 Emergency Contacts</a>
+        
+        {% if current_user.role == 'Admin' %}
+        <a href="/cnn-admin" class="nav-link text-white py-3 px-4 bg-dark">⚙️ CNN Intelligence</a>
+        {% endif %}
+    </nav>
 
     <div class="px-4" style="position: absolute; bottom: 20px; width: 100%;">
-        <div class="badge bg-light text-dark mb-2 w-100">{{ current_user.username }} ({{ current_user.role }})</div>
-        <a href="/logout" class="btn btn-sm btn-outline-danger w-100">Sign Out</a>
+        <div class="p-2 rounded bg-white text-dark small mb-2 text-center">
+            <strong>{{ current_user.username }}</strong><br>
+            <span class="badge bg-primary">{{ current_user.role }}</span>
+        </div>
+        <a href="/logout" class="btn btn-sm btn-danger w-100">Sign Out</a>
     </div>
 </div>
-
-<script>
-    async function updateNotifications() {
-        const res = await fetch('/api/notifications');
-        if (res.ok) {
-            const data = await res.json();
-            const container = document.getElementById('notif-inbox');
-            if (data.length === 0) {
-                container.innerHTML = '<p class="small text-muted">No new alerts.</p>';
-                return;
-            }
-            container.innerHTML = data.map(n => `
-                <div class="p-2 mb-2 bg-dark rounded border-start border-4 border-warning" style="font-size: 0.75rem;">
-                    <strong>${n.time}</strong><br>${n.message}
-                </div>
-            `).join('');
-        }
-    }
-    // Poll for new notifications every 10 seconds
-    if (document.getElementById('notif-inbox')) {
-        setInterval(updateNotifications, 10000);
-        updateNotifications();
-    }
-</script>
