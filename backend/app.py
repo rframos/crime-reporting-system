@@ -86,11 +86,15 @@ def reports():
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
 
+# --- Updated Heatmap Route in app.py ---
 @app.route('/heatmap')
 @login_required
 def heatmap():
-    if current_user.role not in ['Admin', 'Police', 'Official']: return redirect(url_for('index'))
-    return render_template('heatmap.html')
+    if current_user.role not in ['Admin', 'Police', 'Official']: 
+        return redirect(url_for('index'))
+    # IMPORTANT: Pass categories so the filter dropdown works
+    categories = Category.query.order_by(Category.id).all()
+    return render_template('heatmap.html', categories=categories)
 
 @app.route('/cnn-admin')
 @login_required
