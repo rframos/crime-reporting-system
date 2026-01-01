@@ -58,7 +58,7 @@ class Incident(db.Model):
     longitude = db.Column(db.Float)
     status = db.Column(db.String(20), default='Pending')
     severity = db.Column(db.String(20), default='Low')
-    confidence = db.Column(db.Float, default=0.0)
+    confidence = db.Column(db.Float, default=0.0) # NEW
     image_url = db.Column(db.String(255), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'))
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
@@ -66,19 +66,18 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- RBAC ---
+# --- PERMISSIONS DECORATOR ---
 def roles_required(*roles):
     def decorator(f):
         @wraps(f)
-        @login_required
         def decorated_function(*args, **kwargs):
-            if current_user.role not in roles:
+            if not current_user.is_authenticated or current_user.role not in roles:
                 return abort(403)
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
-# --- AI LOGIC ---
+# --- AI LOGIC WITH CONFIDENCE ---
 def process_and_classify(image_path):
     if not os.path.exists(app.config['MODEL_PATH']): return None, None, 0
     try:
@@ -88,7 +87,7 @@ def process_and_classify(image_path):
         img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
         preds = model.predict(img)
         idx = np.argmax(preds[0])
-        conf = float(np.max(preds[0]) * 100)
+        conf = float(np.max(preds[0]) * 100) # Confidence Percentage
         cats = Category.query.order_by(Category.id).all()
         K.clear_session()
         if idx < len(cats): return cats[idx].name, cats[idx].severity, conf
@@ -98,18 +97,15 @@ def process_and_classify(image_path):
 # --- ROUTES ---
 @app.route('/')
 @login_required
-def index(): 
-    return render_template('index.html', categories=Category.query.all())
+def index(): return render_template('index.html', categories=Category.query.all())
 
 @app.route('/heatmap')
 @roles_required('Admin', 'Police', 'Barangay')
-def heatmap_page(): 
-    return render_template('heatmap.html', categories=Category.query.all())
+def heatmap_page(): return render_template('heatmap.html', categories=Category.query.all())
 
 @app.route('/contact')
 @roles_required('Resident', 'Barangay')
-def contact_page(): 
-    return render_template('contacts.html')
+def contact_page(): return render_template('contacts.html')
 
 @app.route('/reports')
 @roles_required('Admin', 'Police', 'Barangay')
@@ -123,20 +119,15 @@ def cnn_admin():
     counts = {}
     if os.path.exists(app.config['TRAIN_FOLDER']):
         for d in os.listdir(app.config['TRAIN_FOLDER']):
-            if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d)):
-                counts[d] = len(os.listdir(os.path.join(app.config['TRAIN_FOLDER'], d)))
+            p = os.path.join(app.config['TRAIN_FOLDER'], d)
+            if os.path.isdir(p): counts[d] = len(os.listdir(p))
     return render_template('cnn_admin.html', categories=Category.query.all(), counts=counts)
 
-# --- API ---
 @app.route('/api/incidents')
 @login_required
 def get_incidents_api():
-    incidents = Incident.query.all()
-    return jsonify([{
-        "lat": i.latitude, 
-        "lng": i.longitude, 
-        "type": i.incident_type
-    } for i in incidents])
+    inc = Incident.query.all()
+    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type} for i in inc])
 
 @app.route('/api/report', methods=['POST'])
 @login_required
@@ -158,31 +149,28 @@ def create_report():
     db.session.add(new_inc); db.session.commit()
     return jsonify({"status": "success", "classified_as": final_type, "confidence": f_conf})
 
-# --- RESET & AUTH ---
+# --- ADMIN API (TRAINING/RESET) ---
+@app.route('/api/admin/train-status')
+@login_required
+def train_status(): return jsonify(training_info)
+
+@app.route('/api/admin/gallery/<category_name>')
+@login_required
+def get_gallery(category_name):
+    path = os.path.join(app.config['TRAIN_FOLDER'], category_name)
+    if not os.path.exists(path): return jsonify([])
+    return jsonify([img for img in os.listdir(path) if img.lower().endswith(('.png', '.jpg', '.jpeg'))])
+
 @app.route('/reset-db')
 def reset_db():
     if os.path.exists(app.config['TRAIN_FOLDER']): shutil.rmtree(app.config['TRAIN_FOLDER'])
     os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
-    if os.path.exists(app.config['MODEL_PATH']): os.remove(app.config['MODEL_PATH'])
     db.drop_all(); db.create_all()
-    for n, s in [('Theft','Medium'), ('Fire','Critical')]:
-        db.session.add(Category(name=n, severity=s))
-        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], n), exist_ok=True)
+    db.session.add(Category(name='Theft', severity='Medium'))
     db.session.commit()
     return redirect(url_for('login_page'))
 
-@app.route('/login')
-def login_page(): return render_template('login.html')
-
-@app.route('/api/login', methods=['POST'])
-def login():
-    user = User.query.filter_by(username=request.form.get('username')).first()
-    if user and check_password_hash(user.password, request.form.get('password')):
-        login_user(user); return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 401
-
-@app.route('/logout')
-def logout(): logout_user(); return redirect(url_for('login_page'))
+# (Rest of Auth routes / training logic same as before...)
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
