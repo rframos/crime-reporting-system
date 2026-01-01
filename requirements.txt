@@ -7,8 +7,9 @@ Flask-SQLAlchemy==3.1.1
 psycopg2-binary==2.9.9
 
 # AI & Image Processing
-tensorflow-cpu==2.15.0
-numpy==1.26.4
+# We remove the -cpu suffix and the strict 2.15 version for compatibility
+tensorflow>=2.17.0
+numpy<2.0.0
 Pillow==10.2.0
 
 # Utilities
