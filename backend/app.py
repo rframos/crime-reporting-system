@@ -4,12 +4,13 @@ from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
 # 1. INITIALIZE FLASK
-# Points to your /frontend folder for HTML/CSS/JS
+# We tell Flask that both the HTML and CSS/JS are in the '../frontend' folder
 app = Flask(__name__, 
             template_folder='../frontend', 
             static_folder='../frontend')
 
-# 2. DATABASE CONFIGURATION (Render PostgreSQL Fix)
+# 2. DATABASE CONFIGURATION
+# This handles the Render requirement for 'postgresql://'
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
@@ -33,20 +34,19 @@ class Incident(db.Model):
 # 4. ROUTES
 @app.route('/')
 def index():
-    # Looks for /frontend/index.html
     return render_template('index.html')
 
 @app.route('/api/report', methods=['POST'])
 def create_report():
     try:
-        # Get data from the frontend form
+        # Get data from the form
         description = request.form.get('description')
         lat = float(request.form.get('lat'))
         lng = float(request.form.get('lng'))
         manual_type = request.form.get('type')
         
         # MOCK LOGIC for Connection Testing
-        # This bypasses the CNN for now to ensure DB connectivity works
+        # This confirms the backend is receiving the request correctly
         detected_type = f"Test_{manual_type}"
         
         # Save to PostgreSQL
@@ -70,7 +70,7 @@ def create_report():
 
 @app.route('/api/incidents', methods=['GET'])
 def get_incidents():
-    # Returns all incidents for the Heatmap.js visualization
+    # Feeds the Heatmap.js on the frontend
     incidents = Incident.query.all()
     return jsonify([{
         "lat": i.latitude, 
@@ -79,9 +79,8 @@ def get_incidents():
         "status": i.status
     } for i in incidents])
 
-# 5. INITIALIZE DATABASE
+# 5. INITIALIZE DB
 if __name__ == '__main__':
     with app.app_context():
-        # This creates the 'incidents' table in PostgreSQL automatically
-        db.create_all()
+        db.create_all() # Creates the table in PostgreSQL
     app.run(debug=True)
