@@ -1,50 +1,37 @@
-// Map Initialization: Centered on San Jose del Monte, Bulacan
 var map = L.map('map').setView([14.8091, 121.0459], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap'
-}).addTo(map);
+var marker;
 
-var currentMarker;
-
-// Click to place a new pin
-map.on('click', (e) => {
+map.on('click', function(e) {
     document.getElementById('lat').value = e.latlng.lat.toFixed(6);
     document.getElementById('lng').value = e.latlng.lng.toFixed(6);
-    if (currentMarker) currentMarker.setLatLng(e.latlng);
-    else currentMarker = L.marker(e.latlng).addTo(map);
+    if (marker) marker.setLatLng(e.latlng);
+    else marker = L.marker(e.latlng).addTo(map);
 });
 
-// Load existing pins
 function loadIncidents() {
     fetch('/api/incidents')
     .then(res => res.json())
     .then(data => {
         data.forEach(inc => {
-            const markerColor = inc.status === 'Pending' ? 'red' : 'green';
-            L.marker([inc.lat, inc.lng])
-                .addTo(map)
-                .bindPopup(`
-                    <strong>${inc.type}</strong><br>
-                    ${inc.description}<br>
-                    <span class="badge bg-secondary">${inc.status}</span><br>
-                    <small>${inc.date}</small>
-                `);
+            L.marker([inc.lat, inc.lng]).addTo(map)
+                .bindPopup(`<b>${inc.type}</b><br>${inc.description}<br><small>${inc.status}</small>`);
         });
     });
 }
 
-// Submit logic
 document.getElementById('incidentForm').onsubmit = function(e) {
     e.preventDefault();
     const formData = new FormData(this);
-    
     fetch('/api/report', { method: 'POST', body: formData })
     .then(res => res.json())
     .then(data => {
         if(data.status === 'success') {
-            alert("Incident Report Submitted!");
+            alert("Record Saved!");
             location.reload();
+        } else {
+            alert("Error: " + data.message);
         }
     });
 };
