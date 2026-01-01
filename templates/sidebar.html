@@ -1,20 +1,21 @@
-<div class="sidebar" style="height: 100vh; background: #2c3e50; color: white; padding: 20px; position: fixed; width: 260px;">
+<div class="sidebar" style="height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; z-index: 1000;">
     <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
     
-    <a href="/" class="d-block p-2 text-white text-decoration-none border-bottom">📍 Map Dashboard</a>
+    <a href="/" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/' %}bg-primary{% endif %}">📍 Map Dashboard</a>
 
     {% if current_user.role in ['Admin', 'Police', 'Barangay'] %}
-    <a href="/heatmap" class="d-block p-2 text-white text-decoration-none border-bottom">🔥 Crime Heatmap</a>
-    <a href="/reports" class="d-block p-2 text-white text-decoration-none border-bottom">📋 Incident Reports</a>
+    <a href="/heatmap" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/heatmap' %}bg-primary{% endif %}">🔥 Crime Heatmap</a>
+    <a href="/reports" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/reports' %}bg-primary{% endif %}">📋 Incident Reports</a>
     {% endif %}
 
     {% if current_user.role in ['Resident', 'Barangay'] %}
-    <a href="/contact" class="d-block p-2 text-white text-decoration-none border-bottom">📞 Emergency Contacts</a>
+    <a href="/contact" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/contact' %}bg-primary{% endif %}">📞 Emergency Contacts</a>
     {% endif %}
 
     {% if current_user.role == 'Admin' %}
-    <a href="/cnn-admin" class="d-block p-2 text-info text-decoration-none border-bottom">⚙️ AI Training</a>
+    <hr>
+    <a href="/cnn-admin" class="d-block py-2 px-4 text-info text-decoration-none {% if request.path == '/cnn-admin' %}bg-dark{% endif %}">⚙️ AI Management</a>
     {% endif %}
 
-    <a href="/logout" class="d-block p-2 text-danger text-decoration-none mt-5">Logout ({{ current_user.username }})</a>
+    <a href="/logout" class="d-block py-2 px-4 text-danger text-decoration-none mt-5">Sign Out</a>
 </div>
