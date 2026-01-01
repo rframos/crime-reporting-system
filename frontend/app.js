@@ -1,46 +1,99 @@
-// Show selected page (Login, News, About, Contacts)
-function showPage(page) {
-  document.querySelectorAll('.container > div').forEach(div => div.classList.add('hidden'));
-  document.getElementById(page).classList.remove('hidden');
-}
+// 1. INITIALIZE THE MAP
+// Centered on a general coordinate (you can adjust this to your specific Barangay/City)
+const map = L.map('map').setView([14.5995, 120.9842], 13); 
 
-// Show role-based dashboard after login
-function showDashboard() {
-  let role = document.getElementById('role').value;
-  document.querySelectorAll('[id^="dashboard"]').forEach(div => div.classList.add('hidden'));
-
-  if (role) {
-    let dashboard = document.getElementById('dashboard-' + role);
-    dashboard.classList.remove('hidden');
-
-    // Show heatmap only for Admin, Barangay, Police
-    if (role === "admin" || role === "barangay" || role === "police") {
-      initHeatmap();
-    }
-  }
-}
-
-// Initialize heatmap visualization
-function initHeatmap() {
-  // Clear previous map instance if exists
-  if (window.map) {
-    window.map.remove();
-  }
-
-  // Initialize map (default center: San Jose del Monte)
-  window.map = L.map('map').setView([14.8136, 121.0453], 13);
-
-  // Add OpenStreetMap tiles
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+// Add OpenStreetMap tiles
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
-  }).addTo(window.map);
+}).addTo(map);
 
-  // Fetch incident data from backend API
-  fetch("https://your-backend.onrender.com/heatmap")  // Replace with your Render backend URL
-    .then(response => response.json())
-    .then(data => {
-      // Example data format: [[lat, lng, intensity], ...]
-      L.heatLayer(data, { radius: 25 }).addTo(window.map);
-    })
-    .catch(error => console.error("Error loading heatmap data:", error));
+// 2. HEATMAP CONFIGURATION
+const cfg = {
+    "radius": 40,
+    "maxOpacity": .6,
+    "scaleRadius": false,
+    "useLocalExtrema": true,
+    latField: 'lat',
+    lngField: 'lng',
+    valueField: 'count'
+};
+
+const heatmapLayer = new HeatmapOverlay(cfg);
+map.addLayer(heatmapLayer);
+
+// 3. CLICK TO SET LOCATION
+let marker;
+map.on('click', function(e) {
+    const lat = e.latlng.lat.toFixed(6);
+    const lng = e.latlng.lng.toFixed(6);
+
+    // Update the hidden/readonly form fields
+    document.getElementById('lat').value = lat;
+    document.getElementById('lng').value = lng;
+
+    // Move or create a marker to show the selected spot
+    if (marker) {
+        marker.setLatLng(e.latlng);
+    } else {
+        marker = L.marker(e.latlng).addTo(map);
+    }
+});
+
+// 4. FETCH DATA FOR THE HEATMAP
+function loadHeatmapData() {
+    fetch('/api/incidents')
+        .then(response => response.json())
+        .then(data => {
+            // Heatmap.js expects a "count" for intensity
+            const heatmapData = {
+                max: 8,
+                data: data.map(i => ({
+                    lat: i.lat,
+                    lng: i.lng,
+                    count: 1
+                }))
+            };
+            heatmapLayer.setData(heatmapData);
+        })
+        .catch(err => console.error("Error loading heatmap:", err));
 }
+
+// Initial load
+loadHeatmapData();
+
+// 5. FORM SUBMISSION (With AI Feedback)
+const incidentForm = document.getElementById('incidentForm');
+
+incidentForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(incidentForm);
+    const submitBtn = document.getElementById('submitBtn');
+    
+    submitBtn.disabled = true;
+    submitBtn.innerText = "Analyzing & Submitting...";
+
+    fetch('/api/report', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.status === "success") {
+            alert(`Report Successful! AI Classification: ${result.detected_type}`);
+            incidentForm.reset();
+            if (marker) map.removeLayer(marker);
+            loadHeatmapData(); // Refresh the heatmap
+        } else {
+            alert("Error: " + result.message);
+        }
+    })
+    .catch(err => {
+        console.error("Submission error:", err);
+        alert("An error occurred while submitting the report.");
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "Submit Report";
+    });
+});
