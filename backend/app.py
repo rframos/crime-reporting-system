@@ -123,6 +123,20 @@ def get_gallery(category_name):
     images = [img for img in os.listdir(cat_path) if img.lower().endswith(('.png', '.jpg', '.jpeg'))]
     return jsonify(images)
 
+@app.route('/api/admin/delete-training-image', methods=['POST'])
+@login_required
+def delete_training_image():
+    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
+    data = request.json
+    cat_name = data.get('category')
+    filename = data.get('filename')
+    file_path = os.path.join(app.config['TRAIN_FOLDER'], cat_name, filename)
+    
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        return jsonify({"status": "success", "message": "Image deleted."})
+    return jsonify({"status": "error", "message": "File not found."}), 404
+
 @app.route('/api/admin/train-model', methods=['POST'])
 @login_required
 def train_model():
