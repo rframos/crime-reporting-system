@@ -1,35 +1,80 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Crime Map</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crime Reporting System | Live Map</title>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
     <link rel="stylesheet" href="/static/style.css">
 
-<div id="map" style="height: 500px; width: 100%; border: 1px solid #ccc;"></div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="/static/apps.js"></script>
+    <style>
+        /* Emergency fallback to ensure map is visible */
+        #map { 
+            height: 600px; 
+            width: 100%; 
+            background-color: #f0f0f0; 
+            border: 2px solid #ccc;
+            border-radius: 8px;
+        }
+        .container { padding: 20px; font-family: sans-serif; }
+        .grid { display: grid; grid-template-columns: 350px 1fr; gap: 20px; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+    </style>
 </head>
 <body>
+
     <div class="container">
+        <header>
+            <h1>Community Incident Reporter</h1>
+            <p>Select a location on the map to file a report.</p>
+        </header>
+
         <div class="grid">
-            <div class="form-section">
-                <h2>Report Incident</h2>
+            <section class="form-panel">
                 <form id="incidentForm">
-                    <select id="type" name="type"><option value="Theft">Theft</option></select>
-                    <textarea name="description" placeholder="Description" required></textarea>
-                    <input type="text" id="lat" name="lat" readonly>
-                    <input type="text" id="lng" name="lng" readonly>
-                    <button type="submit">Submit</button>
+                    <div style="margin-bottom: 15px;">
+                        <label><b>Incident Category:</b></label><br>
+                        <select id="type" name="type" required style="width: 100%; padding: 8px;">
+                            <option value="Theft">Theft</option>
+                            <option value="Vandalism">Vandalism</option>
+                            <option value="Assault">Assault</option>
+                            <option value="Accident">Accident</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label><b>Description:</b></label><br>
+                        <textarea id="description" name="description" rows="4" required style="width: 100%;" placeholder="Describe what happened..."></textarea>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <label><b>Selected Location:</b></label>
+                        <div style="display: flex; gap: 5px;">
+                            <input type="text" id="lat" name="lat" readonly placeholder="Latitude" required style="width: 50%;">
+                            <input type="text" id="lng" name="lng" readonly placeholder="Longitude" required style="width: 50%;">
+                        </div>
+                    </div>
+
+                    <button type="submit" style="background: #007bff; color: white; padding: 10px 20px; border: none; cursor: pointer; width: 100%;">
+                        Submit Report
+                    </button>
                 </form>
-            </div>
-            <div id="map"></div>
+                <div id="responseMessage" style="margin-top: 15px;"></div>
+            </section>
+
+            <section class="map-panel">
+                <div id="map"></div>
+            </section>
         </div>
     </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/heatmap.js/2.0.2/heatmap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leaflet-heatmap@1.0.0/leaflet-heatmap.js"></script>
-    <script src="{{ url_for('static', filename='apps.js') }}"></script>
+
+    <script src="/static/apps.js"></script>
 </body>
 </html>
