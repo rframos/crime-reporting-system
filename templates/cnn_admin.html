@@ -12,8 +12,8 @@
         .main-content { margin-left: 260px; padding: 40px; }
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
         .gallery-img { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; }
-        .gallery-item { position: relative; }
         .btn-delete-img { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; }
+        .gallery-item { position: relative; }
     </style>
 </head>
 <body>
@@ -32,28 +32,17 @@
         <div class="row">
             <div class="col-lg-7">
                 <div class="card p-4">
-                    <h5 class="fw-bold mb-3">1. Add Category</h5>
-                    <form action="/api/admin/add-category" method="POST" class="row g-2">
+                    <h5 class="fw-bold mb-3">1. Categories & Upload</h5>
+                    <form action="/api/admin/add-category" method="POST" class="row g-2 mb-3">
                         <div class="col-md-6"><input type="text" name="name" class="form-control" placeholder="Category Name" required></div>
-                        <div class="col-md-4">
-                            <select name="severity" class="form-select">
-                                <option value="Low">Low</option><option value="Medium">Medium</option>
-                                <option value="High">High</option><option value="Critical">Critical</option>
-                            </select>
-                        </div>
+                        <div class="col-md-4"><select name="severity" class="form-select"><option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option><option value="Critical">Critical</option></select></div>
                         <div class="col-md-2"><button type="submit" class="btn btn-dark w-100">+</button></div>
                     </form>
-                </div>
-
-                <div class="card p-4">
-                    <h5 class="fw-bold mb-3">2. Upload Training Data</h5>
                     <form id="uploadForm" enctype="multipart/form-data">
                         <div class="row g-2">
                             <div class="col-md-5">
                                 <select name="category" class="form-select" required>
-                                    {% for cat in categories %}
-                                    <option value="{{ cat.name }}">{{ cat.name }}</option>
-                                    {% endfor %}
+                                    {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
                                 </select>
                             </div>
                             <div class="col-md-5"><input type="file" name="images" class="form-control" multiple required></div>
@@ -63,10 +52,20 @@
                 </div>
 
                 <div class="card p-4 bg-light text-center">
-                    <h5 class="fw-bold mb-1">3. Model Training</h5>
+                    <h5 class="fw-bold mb-1">2. AI Training</h5>
                     <div id="statusBadge" class="badge bg-secondary mb-3">Status: Idle</div>
                     <button onclick="startTraining()" id="trainBtn" class="btn btn-success btn-lg w-100 fw-bold">START TRAINING</button>
                     <p id="lastRun" class="small text-muted mt-2"></p>
+                </div>
+                
+                <div class="card p-4 border-primary">
+                    <h5 class="fw-bold text-primary">3. Backup & Restore</h5>
+                    <p class="small text-muted">Use this to save your dataset before a system reset.</p>
+                    <div class="d-flex gap-2">
+                        <a href="/api/admin/download-dataset" class="btn btn-outline-primary flex-grow-1">Download ZIP Backup</a>
+                        <button onclick="document.getElementById('zipInput').click()" class="btn btn-outline-secondary flex-grow-1">Restore from ZIP</button>
+                    </div>
+                    <input type="file" id="zipInput" style="display:none" onchange="restoreDataset(this)">
                 </div>
             </div>
 
@@ -75,9 +74,7 @@
                     <h5 class="fw-bold mb-3">Dataset Gallery</h5>
                     <select id="gallerySelect" class="form-select mb-3" onchange="loadGallery(this.value)">
                         <option value="">-- View Folder --</option>
-                        {% for cat in categories %}
-                        <option value="{{ cat.name }}">{{ cat.name }} ({{ counts[cat.name] or 0 }})</option>
-                        {% endfor %}
+                        {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }} ({{ counts[cat.name] or 0 }})</option>{% endfor %}
                     </select>
                     <div id="galleryGrid" class="row g-2" style="max-height: 400px; overflow-y: auto;"></div>
                 </div>
@@ -86,36 +83,31 @@
     </div>
 
     <script>
-        // Check Status every 3 seconds
         async function checkStatus() {
             const res = await fetch('/api/admin/train-status');
             const data = await res.json();
             const badge = document.getElementById('statusBadge');
             const btn = document.getElementById('trainBtn');
-
             badge.innerText = "Status: " + data.status;
-            
-            if (data.status.includes("Processing") || data.status.includes("Fitting")) {
-                badge.className = "badge bg-warning text-dark mb-3";
-                btn.disabled = true;
-                btn.innerText = "TRAINING IN PROGRESS...";
-            } else if (data.status === "Success") {
-                badge.className = "badge bg-success mb-3";
-                btn.disabled = false;
-                btn.innerText = "START TRAINING";
-                if(data.last_run) document.getElementById('lastRun').innerText = "Last trained at: " + data.last_run;
-            } else if (data.status.includes("Failed")) {
-                badge.className = "badge bg-danger mb-3";
-                btn.disabled = false;
+            if (data.status.includes("Training") || data.status.includes("Preparing")) {
+                badge.className = "badge bg-warning text-dark mb-3"; btn.disabled = true;
+            } else {
+                badge.className = "badge bg-success mb-3"; btn.disabled = false;
+                if(data.last_run !== "Never") document.getElementById('lastRun').innerText = "Last run: " + data.last_run;
             }
         }
-
         setInterval(checkStatus, 3000);
 
-        async function startTraining() {
-            const res = await fetch('/api/admin/train-model', { method: 'POST' });
+        async function startTraining() { await fetch('/api/admin/train-model', { method: 'POST' }); }
+
+        async function restoreDataset(input) {
+            if(!input.files[0]) return;
+            const formData = new FormData();
+            formData.append('zip_file', input.files[0]);
+            const res = await fetch('/api/admin/restore-dataset', { method: 'POST', body: formData });
             const data = await res.json();
             alert(data.message);
+            location.reload();
         }
 
         async function loadGallery(catName) {
