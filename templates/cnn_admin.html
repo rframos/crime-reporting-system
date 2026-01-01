@@ -1,61 +1,159 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><title>CNN Admin</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeCity SJDM | CNN Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        body { background: #f4f7f6; }
+        body { background: #f4f7f6; font-family: 'Segoe UI', sans-serif; }
         .sidebar { height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; }
-        .sidebar a { color: #bdc3c7; text-decoration: none; padding: 12px 25px; display: block; }
-        .sidebar a.active { background: #3498db; color: white; border-left: 5px solid #fff; }
-        .main-content { margin-left: 260px; padding: 30px; }
+        .sidebar a { color: #bdc3c7; text-decoration: none; padding: 12px 25px; display: block; transition: 0.3s; }
+        .sidebar a:hover, .sidebar a.active { background: #3498db; color: white; }
+        .main-content { margin-left: 260px; padding: 40px; }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .stats-box { background: #34495e; color: white; border-radius: 12px; padding: 20px; }
+        .training-log { background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 15px; border-radius: 8px; height: 150px; overflow-y: auto; font-size: 0.85rem; }
     </style>
 </head>
 <body>
+
     <div class="sidebar">
-        <div class="sidebar-brand text-center fw-bold mb-4">SafeCity SJDM</div>
+        <div class="text-center mb-4"><h4 class="fw-bold">SafeCity Admin</h4></div>
         <a href="/">Map Dashboard</a>
         <a href="/reports">Incident Reports</a>
+        <a href="/heatmap">Crime Heatmap</a>
         <a href="/cnn-admin" class="active">CNN Management</a>
-        <a href="/logout" class="text-danger mt-5">Sign Out</a>
+        <div style="position:absolute; bottom:20px; width:100%; border-top: 1px solid #3e4f5f; padding-top:15px;">
+            <a href="/logout" class="text-danger">Sign Out</a>
+        </div>
     </div>
+
     <div class="main-content">
-        <h3 class="fw-bold mb-4">AI Category & Severity Manager</h3>
-        <div class="card p-4 shadow-sm border-0 mb-4">
-            <h5 class="fw-bold mb-3">Add / Update Incident Type</h5>
-            <form action="/api/categories" method="POST" class="row g-3">
-                <div class="col-md-5">
-                    <input type="text" name="name" class="form-control" placeholder="Incident Name (e.g. Fire)" required>
-                </div>
-                <div class="col-md-4">
-                    <select name="severity" class="form-select">
-                        <option value="Low">Low Severity</option>
-                        <option value="Medium">Medium Severity</option>
-                        <option value="High">High Severity</option>
-                        <option value="Critical">Critical Severity</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <button type="submit" class="btn btn-primary w-100">Save Category</button>
-                </div>
-            </form>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold">AI Model & Dataset Control</h2>
+            <div class="badge bg-primary px-3 py-2">System Version: 2026.1.0</div>
         </div>
-        <div class="card shadow-sm border-0">
-            <table class="table table-hover mb-0">
-                <thead class="table-dark">
-                    <tr><th>Incident Type</th><th>Set Severity</th><th>Model Hook</th></tr>
-                </thead>
-                <tbody>
-                    {% for cat in categories %}
-                    <tr>
-                        <td>{{ cat.name }}</td>
-                        <td><span class="badge {% if cat.severity == 'High' or cat.severity == 'Critical' %}bg-danger{% else %}bg-info{% endif %}">{{ cat.severity }}</span></td>
-                        <td class="text-muted small">CNN_CLASS_{{ cat.name.upper() }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+
+        <div class="row g-4">
+            <div class="col-lg-7">
+                <div class="card p-4 mb-4 bg-dark text-white shadow-lg">
+                    <h5 class="fw-bold text-warning"><i class="bi bi-cpu-fill"></i> Server-Side CNN Training</h5>
+                    <p class="small text-secondary">Trigger a new training session using images uploaded by residents. This will overwrite <code>crime_model.h5</code> on the server.</p>
+                    
+                    <div class="training-log mb-3" id="logBox">
+                        [System Idle] Ready to start training...<br>
+                        - Awaiting Admin command.<br>
+                    </div>
+
+                    <button id="trainBtn" class="btn btn-warning w-100 fw-bold py-2">
+                        <i class="bi bi-play-circle"></i> RE-TRAIN AI MODEL
+                    </button>
+                </div>
+
+                <div class="card p-4">
+                    <h5 class="fw-bold mb-3">Define Incident Categories</h5>
+                    <form action="/api/categories" method="POST" class="row g-2 mb-4">
+                        <div class="col-md-5">
+                            <input type="text" name="name" class="form-control" placeholder="e.g., Fire, Theft" required>
+                        </div>
+                        <div class="col-md-4">
+                            <select name="severity" class="form-select">
+                                <option value="Low">Low</option>
+                                <option value="Medium">Medium</option>
+                                <option value="High">High</option>
+                                <option value="Critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-primary w-100">Add Type</button>
+                        </div>
+                    </form>
+
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr><th>Class ID</th><th>Label Name</th><th>Severity</th><th>Action</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for cat in categories %}
+                            <tr>
+                                <td><code class="text-primary">{{ loop.index0 }}</code></td>
+                                <td class="fw-bold">{{ cat.name }}</td>
+                                <td>
+                                    <span class="badge {% if cat.severity == 'High' or cat.severity == 'Critical' %}bg-danger{% else %}bg-info{% endif %}">
+                                        {{ cat.severity }}
+                                    </span>
+                                </td>
+                                <td><button class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></button></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="stats-box mb-4">
+                    <h6 class="text-secondary text-uppercase small fw-bold">Current Model Status</h6>
+                    <h3 class="fw-bold mb-0">Active</h3>
+                    <hr class="my-3 opacity-25">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Architecture</span>
+                        <span class="text-info">Sequential CNN</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>File Path</span>
+                        <span class="text-info small">/crime_model.h5</span>
+                    </div>
+                </div>
+
+                <div class="card p-4">
+                    <h5 class="fw-bold mb-3">Training Dataset Overview</h5>
+                    <p class="small text-muted">A balanced dataset ensures the AI doesn't get confused.</p>
+                    <ul class="list-group list-group-flush">
+                        {% for cat in categories %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            {{ cat.name }}
+                            <span class="badge bg-secondary rounded-pill">0 Images</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    <button class="btn btn-outline-primary btn-sm mt-3 w-100">Manage Dataset Images</button>
+                </div>
+            </div>
         </div>
     </div>
+
+    <script>
+        const trainBtn = document.getElementById('trainBtn');
+        const logBox = document.getElementById('logBox');
+
+        trainBtn.onclick = async function() {
+            if(!confirm("Warning: Training uses high server resources. Proceed?")) return;
+
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Training in Progress...';
+            logBox.innerHTML += `> [${new Date().toLocaleTimeString()}] Initializing training pipeline...<br>`;
+            
+            try {
+                const res = await fetch('/api/train', { method: 'POST' });
+                const data = await res.json();
+                
+                if(data.status === 'success') {
+                    logBox.innerHTML += `> <span class="text-info">[SUCCESS]</span> ${data.message}<br>`;
+                    alert("Training Complete: Model updated on server.");
+                } else {
+                    logBox.innerHTML += `> <span class="text-danger">[ERROR]</span> ${data.message}<br>`;
+                    alert("Training Failed: " + data.message);
+                }
+            } catch (err) {
+                logBox.innerHTML += `> <span class="text-danger">[FATAL]</span> Server Connection Lost.<br>`;
+            } finally {
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-play-circle"></i> RE-TRAIN AI MODEL';
+            }
+        };
+    </script>
 </body>
 </html>
