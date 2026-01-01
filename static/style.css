@@ -1,1 +1,4 @@
-
+#map { height: 500px; width: 100%; border-radius: 8px; }
+.grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; padding: 20px; }
+.form-section { display: flex; flex-direction: column; gap: 10px; }
+input, textarea { padding: 10px; width: 100%; }
