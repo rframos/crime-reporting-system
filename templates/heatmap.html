@@ -1,138 +1,52 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SafeCity SJDM | Crime Heatmap</title>
+    <title>SafeCity | Heatmap</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { background: #f4f7f6; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
-        .main-content { margin-left: 260px; height: 100vh; position: relative; }
-        #map { width: 100%; height: 100%; z-index: 1; }
-        
-        /* Map Overlay UI */
-        .map-overlay {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            width: 300px;
-            background: white;
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-        .legend {
-            line-height: 18px;
-            color: #555;
-        }
-        .legend i {
-            width: 18px;
-            height: 18px;
-            float: left;
-            margin-right: 8px;
-            opacity: 0.7;
-            border-radius: 50%;
-        }
+        .main-content { margin-left: 260px; height: 100vh; }
+        #map { height: 100%; width: 100%; }
+        .map-overlay { position: absolute; top: 20px; right: 20px; z-index: 1000; background: white; padding: 15px; border-radius: 10px; width: 250px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
     {% include 'sidebar.html' %}
-
     <div class="main-content">
         <div id="map"></div>
-
-        <div class="map-overlay">
-            <h5 class="fw-bold mb-3">🔥 Analytics Control</h5>
-            
-            <div class="mb-3">
-                <label class="small fw-bold">Incident Filter</label>
-                <select id="categoryFilter" class="form-select form-select-sm" onchange="loadHeatmap()">
-                    <option value="all">All Incidents</option>
-                    {% for cat in categories %}
-                    <option value="{{ cat.name }}">{{ cat.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="mb-3">
-                <label class="small fw-bold">Heat Intensity</label>
-                <input type="range" class="form-range" id="radius" min="10" max="50" value="25" oninput="loadHeatmap()">
-            </div>
-
+        <div class="map-overlay text-dark">
+            <h6 class="fw-bold">Heatmap Analytics</h6>
+            <label class="small">Intensity Radius</label>
+            <input type="range" id="radius" class="form-range" min="10" max="60" value="30" onchange="renderHeat()">
             <hr>
-            <div id="stats">
-                <p class="small mb-1">Total Hotspots: <span id="totalCount" class="fw-bold text-danger">0</span></p>
-                <p class="small mb-0 text-muted">Data updated: <span id="updateTime">Just now</span></p>
-            </div>
-            
-            <div class="mt-3 legend small">
-                <div><i style="background: red"></i> High Density</div>
-                <div><i style="background: orange"></i> Medium Density</div>
-                <div><i style="background: blue"></i> Low Density</div>
+            <div class="small">
+                <strong>Legend:</strong><br>
+                🔴 Critical (Red)<br>
+                🟡 Warning (Yellow)<br>
+                🔵 Low (Blue)
             </div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
-    
     <script>
-        // Initialize Map centered in San Jose del Monte
-        const map = L.map('map', {
-            zoomControl: false 
-        }).setView([14.8087, 121.0450], 13);
+        const map = L.map('map').setView([14.8087, 121.0450], 13);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        let heatLayer;
 
-        // Dark Mode Tile Layer for better Heatmap Visibility
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap &copy; CARTO'
-        }).addTo(map);
-
-        let heatLayer = null;
-
-        async function loadHeatmap() {
-            const category = document.getElementById('categoryFilter').value;
-            const radius = document.getElementById('radius').value;
-
-            try {
-                const response = await fetch('/api/incidents');
-                const data = await response.json();
-
-                // Filter Logic
-                const filteredData = category === 'all' 
-                    ? data 
-                    : data.filter(i => i.type === category);
-
-                // Format for Heat Layer: [lat, lng, intensity]
-                const points = filteredData.map(i => [i.lat, i.lng, 0.7]);
-
-                // Clear old layer
-                if (heatLayer) {
-                    map.removeLayer(heatLayer);
-                }
-
-                // Add New Heat Layer
-                heatLayer = L.heatLayer(points, {
-                    radius: parseInt(radius),
-                    blur: 15,
-                    maxZoom: 17,
-                    gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'}
-                }).addTo(map);
-
-                // Update UI Stats
-                document.getElementById('totalCount').innerText = filteredData.length;
-                document.getElementById('updateTime').innerText = new Date().toLocaleTimeString();
-
-            } catch (error) {
-                console.error("Error loading heatmap data:", error);
-            }
+        async function renderHeat() {
+            const res = await fetch('/api/incidents');
+            const data = await res.json();
+            const rad = document.getElementById('radius').value;
+            
+            const points = data.map(i => [i.lat, i.lng, 0.8]);
+            
+            if(heatLayer) map.removeLayer(heatLayer);
+            heatLayer = L.heatLayer(points, {radius: parseInt(rad), blur: 15}).addTo(map);
         }
-
-        // Initial Load
-        loadHeatmap();
+        renderHeat();
     </script>
 </body>
 </html>
