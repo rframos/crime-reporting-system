@@ -74,47 +74,71 @@ def get_dataset_counts():
                 counts[cat_dir] = len(os.listdir(path))
     return counts
 
-# --- BACKUP & RESTORE LOGIC ---
+# --- RESET UTILITIES ---
+
+def clear_physical_data():
+    """Wipes all training images, folders, and the saved .h5 model."""
+    if os.path.exists(app.config['TRAIN_FOLDER']):
+        shutil.rmtree(app.config['TRAIN_FOLDER'])
+    os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
+    
+    if os.path.exists(app.config['MODEL_PATH']):
+        os.remove(app.config['MODEL_PATH'])
+    
+    # Clear resident uploads too if you want a total wipe
+    if os.path.exists(app.config['UPLOAD_FOLDER']):
+        shutil.rmtree(app.config['UPLOAD_FOLDER'])
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+@app.route('/reset-db')
+def reset_db():
+    # 1. Clear Files
+    clear_physical_data()
+    # 2. Clear Database
+    db.session.remove()
+    db.drop_all()
+    db.create_all()
+    # 3. Add Default Categories & Folders
+    for n, s in [('Theft','Medium'), ('Fire','Critical')]:
+        db.session.add(Category(name=n, severity=s))
+        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], n), exist_ok=True)
+    db.session.commit()
+    return "Database and Training Files Reset Successfully."
+
+# --- BACKUP & RESTORE ---
 
 @app.route('/api/admin/download-dataset')
 @login_required
 def download_dataset():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
-    
     memory_file = BytesIO()
     with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(app.config['TRAIN_FOLDER']):
             for file in files:
                 file_path = os.path.join(root, file)
-                # Create a relative path for the zip file
                 arcname = os.path.relpath(file_path, app.config['TRAIN_FOLDER'])
                 zf.write(file_path, arcname)
-    
     memory_file.seek(0)
-    return send_file(memory_file, download_name="safecity_dataset_backup.zip", as_attachment=True)
+    return send_file(memory_file, download_name="safecity_backup.zip", as_attachment=True)
 
 @app.route('/api/admin/restore-dataset', methods=['POST'])
 @login_required
 def restore_dataset():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
     file = request.files.get('zip_file')
-    if not file: return jsonify({"status": "error", "message": "No file"}), 400
-    
+    if not file: return jsonify({"status": "error"}), 400
     with zipfile.ZipFile(file, 'r') as zf:
         zf.extractall(app.config['TRAIN_FOLDER'])
-        
-        # Automatically sync Database Categories with extracted folders
         extracted_folders = [d for d in os.listdir(app.config['TRAIN_FOLDER']) 
                            if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d))]
-        
         for folder in extracted_folders:
             if not Category.query.filter_by(name=folder).first():
                 db.session.add(Category(name=folder, severity="Medium"))
         db.session.commit()
-        
-    return jsonify({"status": "success", "message": "Dataset restored and categories synced!"})
+    return jsonify({"status": "success", "message": "Dataset restored!"})
 
-# --- AI THREADED TRAINING ---
+# --- AI ENGINE ---
+
 def run_training_task(app_context, categories):
     global training_info
     try:
@@ -130,15 +154,12 @@ def run_training_task(app_context, categories):
                     if img is not None:
                         X.append(cv2.resize(img, (150, 150)))
                         y.append(i)
-
             if len(X) < 2:
                 training_info["status"] = "Failed: Need more images"
                 return
-
             X = np.array(X).astype('float32') / 255.0
             y = np.array(y)
-
-            training_info["status"] = "Training AI (Fitting)..."
+            training_info["status"] = "Training AI..."
             model = tf.keras.models.Sequential([
                 tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(150, 150, 3)),
                 tf.keras.layers.MaxPooling2D(2,2),
@@ -149,7 +170,6 @@ def run_training_task(app_context, categories):
             model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
             model.fit(X, y, epochs=5, batch_size=4, verbose=0)
             model.save(app.config['MODEL_PATH'])
-            
             K.clear_session()
             training_info["status"] = "Success"
             training_info["last_run"] = datetime.datetime.now().strftime("%I:%M %p")
@@ -158,7 +178,6 @@ def run_training_task(app_context, categories):
     finally:
         K.clear_session()
 
-# --- ROUTES ---
 @app.route('/api/admin/train-model', methods=['POST'])
 @login_required
 def train_model():
@@ -166,7 +185,7 @@ def train_model():
     categories = Category.query.order_by(Category.id).all()
     thread = threading.Thread(target=run_training_task, args=(app.app_context(), categories))
     thread.start()
-    return jsonify({"status": "started", "message": "Background training initiated."})
+    return jsonify({"status": "started", "message": "Training initiated."})
 
 @app.route('/api/admin/train-status')
 @login_required
@@ -212,6 +231,8 @@ def delete_training_image():
     file_path = os.path.join(app.config['TRAIN_FOLDER'], data.get('category'), data.get('filename'))
     if os.path.exists(file_path): os.remove(file_path)
     return jsonify({"status": "success"})
+
+# --- RESIDENT APP LOGIC ---
 
 def process_and_classify(image_path):
     if not os.path.exists(app.config['MODEL_PATH']): return None, None
