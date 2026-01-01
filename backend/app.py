@@ -1,26 +1,17 @@
 import os
 import datetime
-import shutil
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, redirect, url_for, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 
-# --- CONFIG ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
 
-app.config['SECRET_KEY'] = 'safecity_sjdm_2026_prod'
+app.config['SECRET_KEY'] = 'sjdm_safe_city_2026'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(base_dir, 'local.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
-app.config['TRAIN_FOLDER'] = os.path.join(base_dir, 'static/training_data')
-
-# Ensure directories exist for training and uploads
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -62,65 +53,39 @@ def roles_required(*roles):
     return decorator
 
 # --- ROUTES ---
-
 @app.route('/')
 @login_required
 def index():
     return render_template('index.html', categories=Category.query.all())
 
+@app.route('/heatmap')
+@login_required
+def heatmap():
+    return render_template('heatmap.html')
+
+@app.route('/reports')
+@login_required
+def reports():
+    incidents = Incident.query.order_by(Incident.created_at.desc()).all()
+    return render_template('reports.html', incidents=incidents)
+
+@app.route('/contacts')
+@login_required
+def contacts():
+    return render_template('contacts.html')
+
 @app.route('/reset-db')
 def reset_db():
-    # Force close any existing connections before dropping
-    db.session.remove()
     db.drop_all()
     db.create_all()
-    
-    # Add initial categories for CNN training
-    default_cats = [
-        Category(name="Theft", severity="Medium"),
-        Category(name="Assault", severity="High"),
-        Category(name="Vandalism", severity="Low")
-    ]
-    db.session.add_all(default_cats)
+    db.session.add(Category(name="Theft", severity="Medium"))
     db.session.commit()
-    
-    # Create folder structure for images
-    for cat in default_cats:
-        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], cat.name), exist_ok=True)
-        
-    return "Database and Folders Reset! <a href='/register'>Go Register Admin</a>"
+    return "Database Reset Successfully."
 
-@app.route('/cnn-admin')
-@roles_required('Admin')
-def cnn_admin():
-    categories = Category.query.all()
-    dataset = {}
-    for cat in categories:
-        path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
-        dataset[cat.name] = os.listdir(path) if os.path.exists(path) else []
-    return render_template('cnn_admin.html', categories=categories, dataset=dataset)
-
-@app.route('/api/categories', methods=['POST'])
-@roles_required('Admin')
-def add_category():
-    name = request.form.get('name').strip()
-    severity = request.form.get('severity')
-    if name and not Category.query.filter_by(name=name).first():
-        new_cat = Category(name=name, severity=severity)
-        db.session.add(new_cat)
-        db.session.commit()
-        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], name), exist_ok=True)
-    return redirect(url_for('cnn_admin'))
-
-@app.route('/api/delete-training-img', methods=['POST'])
-@roles_required('Admin')
-def delete_img():
-    data = request.json
-    path = os.path.join(app.config['TRAIN_FOLDER'], data['category'], data['filename'])
-    if os.path.exists(path):
-        os.remove(path)
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 404
+@app.route('/api/incidents')
+def get_incidents():
+    incidents = Incident.query.all()
+    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type} for i in incidents])
 
 @app.route('/login')
 def login_page(): return render_template('login.html')
@@ -131,21 +96,24 @@ def register_page(): return render_template('register.html')
 @app.route('/api/register', methods=['POST'])
 def register():
     uname = request.form.get('username')
-    new_user = User(username=uname, password=generate_password_hash(request.form.get('password')), role=request.form.get('role'))
-    db.session.add(new_user); db.session.commit()
+    passw = request.form.get('password')
+    role = request.form.get('role')
+    if User.query.filter_by(username=uname).first(): return "User exists", 400
+    db.session.add(User(username=uname, password=generate_password_hash(passw), role=role))
+    db.session.commit()
     return jsonify({"status": "success"})
 
 @app.route('/api/login', methods=['POST'])
 def login():
     user = User.query.filter_by(username=request.form.get('username')).first()
     if user and check_password_hash(user.password, request.form.get('password')):
-        login_user(user); return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 401
+        login_user(user)
+        return jsonify({"status": "success"})
+    return "Error", 401
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
 
 if __name__ == '__main__':
-    # Use PORT env for Render compatibility
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
