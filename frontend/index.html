@@ -3,86 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Community Crime Reporting & Heatmap</title>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <title>Crime Reporting System</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-
-    <style>
-        /* Quick layout fixes to ensure the map is visible */
-        #map {
-            height: 500px;
-            width: 100%;
-            border-radius: 8px;
-            margin-top: 20px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .report-form {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-weight: 600; margin-bottom: 5px; }
-        input, textarea, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
-    </style>
 </head>
 <body>
 
     <div class="container">
         <header>
-            <h1>Web-Based Incident Reporting System</h1>
-            <p>Empowering communities through AI-driven crime analysis.</p>
+            <h1>Incident Reporting System</h1>
+            <p>Connect with local authorities to keep your community safe.</p>
         </header>
 
-        <hr>
-
         <div class="grid">
-            <section class="report-form">
-                <h2>Report an Incident</h2>
-                <form id="incidentForm" enctype="multipart/form-data">
+            <section class="report-section">
+                <h2>Submit a Report</h2>
+                <form id="incidentForm">
                     <div class="form-group">
-                        <label for="type">Incident Type (Manual Selection)</label>
+                        <label for="type">Incident Category</label>
                         <select id="type" name="type" required>
                             <option value="Theft">Theft</option>
                             <option value="Vandalism">Vandalism</option>
                             <option value="Assault">Assault</option>
                             <option value="Accident">Accident</option>
-                            <option value="Other">Other</option>
                         </select>
-                        <small>Note: AI will verify this if an image is uploaded.</small>
                     </div>
 
                     <div class="form-group">
                         <label for="description">Description</label>
-                        <textarea id="description" name="description" rows="3" required placeholder="Describe what happened..."></textarea>
+                        <textarea id="description" name="description" rows="3" required placeholder="Describe the event..."></textarea>
                     </div>
 
                     <div class="form-group">
-                        <label>Location (Click on the map to set coordinates)</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" id="lat" name="lat" readonly placeholder="Latitude" required>
-                            <input type="text" id="lng" name="lng" readonly placeholder="Longitude" required>
+                        <label>Location Coordinates</label>
+                        <div style="display: flex; gap: 5px;">
+                            <input type="text" id="lat" name="lat" readonly placeholder="Lat" required>
+                            <input type="text" id="lng" name="lng" readonly placeholder="Lng" required>
                         </div>
+                        <small>Click on the map to set the location.</small>
                     </div>
 
                     <div class="form-group">
-                        <label for="image">Upload Image (For CNN Analysis)</label>
+                        <label for="image">Upload Proof (for CNN Analysis)</label>
                         <input type="file" id="image" name="image" accept="image/*">
                     </div>
 
-                    <button type="submit" id="submitBtn">Submit Report</button>
+                    <button type="submit" id="submitBtn">Send Report</button>
                 </form>
             </section>
 
@@ -98,6 +66,5 @@
     <script src="https://cdn.jsdelivr.net/npm/leaflet-heatmap@1.0.0/leaflet-heatmap.js"></script>
 
     <script src="{{ url_for('static', filename='apps.js') }}"></script>
-
 </body>
 </html>
