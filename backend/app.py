@@ -51,7 +51,7 @@ class Incident(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- ROUTES ---
+# --- PAGE ROUTES ---
 @app.route('/')
 @login_required
 def index():
@@ -75,7 +75,8 @@ def reports():
 def heatmap():
     if current_user.role not in ['Police', 'Admin']:
         return "Access Denied", 403
-    return render_template('heatmap.html')
+    categories = Category.query.all()
+    return render_template('heatmap.html', categories=categories)
 
 @app.route('/contacts')
 @login_required
@@ -90,6 +91,7 @@ def cnn_admin():
     categories = Category.query.all()
     return render_template('cnn_admin.html', categories=categories)
 
+# --- API ROUTES ---
 @app.route('/api/incident/<int:id>/status', methods=['POST'])
 @login_required
 def update_status(id):
