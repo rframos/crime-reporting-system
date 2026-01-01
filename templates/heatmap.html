@@ -18,18 +18,16 @@
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2 class="fw-bold text-danger">Crime Density Heatmap</h2>
-            <div class="badge bg-dark px-3 py-2">Role: {{ current_user.role }}</div>
+            <div class="badge bg-dark px-3 py-2">Official Access: {{ current_user.role }}</div>
         </div>
 
         <div class="filter-panel d-flex align-items-center gap-3">
-            <label class="fw-bold text-muted mb-0">Filter by Category:</label>
+            <label class="fw-bold text-muted mb-0">Filter By Category:</label>
             <select id="typeFilter" class="form-select shadow-sm" style="width: 250px;">
                 <option value="All">Show All Categories</option>
-                {% for cat in categories %}
-                <option value="{{ cat.name }}">{{ cat.name }}</option>
-                {% endfor %}
+                {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
             </select>
-            <span id="dataCount" class="badge bg-primary">Loading data...</span>
+            <span id="dataCount" class="badge bg-primary">Loading...</span>
         </div>
 
         <div id="map"></div>
@@ -44,35 +42,20 @@
         let allIncidents = [];
         let heatLayer = null;
 
-        fetch('/api/incidents')
-            .then(res => res.json())
-            .then(data => {
-                allIncidents = data;
-                updateHeatmap("All");
-            });
+        fetch('/api/incidents').then(res => res.json()).then(data => {
+            allIncidents = data;
+            updateHeatmap("All");
+        });
 
         function updateHeatmap(filterType) {
             if (heatLayer) map.removeLayer(heatLayer);
-
-            const filteredData = filterType === "All" 
-                ? allIncidents 
-                : allIncidents.filter(i => i.type === filterType);
-
-            document.getElementById('dataCount').innerText = `${filteredData.length} Incidents Found`;
-
-            const points = filteredData.map(i => [i.lat, i.lng, 0.8]);
-
-            heatLayer = L.heatLayer(points, {
-                radius: 25,
-                blur: 15,
-                maxZoom: 17,
-                gradient: {0.4: 'blue', 0.6: 'lime', 1: 'red'}
-            }).addTo(map);
+            const filtered = filterType === "All" ? allIncidents : allIncidents.filter(i => i.type === filterType);
+            document.getElementById('dataCount').innerText = `${filtered.length} Points Found`;
+            const points = filtered.map(i => [i.lat, i.lng, 0.8]);
+            heatLayer = L.heatLayer(points, {radius: 25, blur: 15, maxZoom: 17, gradient: {0.4:'blue', 0.6:'lime', 1:'red'}}).addTo(map);
         }
 
-        document.getElementById('typeFilter').addEventListener('change', function(e) {
-            updateHeatmap(e.target.value);
-        });
+        document.getElementById('typeFilter').addEventListener('change', e => updateHeatmap(e.target.value));
     </script>
 </body>
 </html>
