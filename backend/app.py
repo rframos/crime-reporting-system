@@ -26,7 +26,6 @@ login_manager = LoginManager(app)
 login_manager.login_view = 'login_page'
 
 # --- MODELS ---
-
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -52,8 +51,7 @@ class Incident(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- ROUTES ---
-
+# --- PAGE ROUTES ---
 @app.route('/')
 @login_required
 def index():
@@ -69,8 +67,8 @@ def login_page():
 def reports():
     if current_user.role == 'Resident':
         return "Access Denied", 403
-    all_incidents = Incident.query.order_by(Incident.created_at.desc()).all()
-    return render_template('reports.html', incidents=all_incidents)
+    incidents = Incident.query.order_by(Incident.created_at.desc()).all()
+    return render_template('reports.html', incidents=incidents)
 
 @app.route('/heatmap')
 @login_required
@@ -78,6 +76,11 @@ def heatmap():
     if current_user.role not in ['Police', 'Admin']:
         return "Access Denied", 403
     return render_template('heatmap.html')
+
+@app.route('/contacts')
+@login_required
+def contacts():
+    return render_template('contacts.html')
 
 @app.route('/cnn-admin')
 @login_required
@@ -87,35 +90,43 @@ def cnn_admin():
     categories = Category.query.all()
     return render_template('cnn_admin.html', categories=categories)
 
-# --- API ---
+# --- API ROUTES ---
+@app.route('/api/incident/<int:id>/status', methods=['POST'])
+@login_required
+def update_status(id):
+    if current_user.role == 'Resident':
+        return jsonify({"status": "error"}), 403
+    incident = Incident.query.get_or_404(id)
+    incident.status = request.form.get('status')
+    db.session.commit()
+    return jsonify({"status": "success"})
 
 @app.route('/api/categories', methods=['POST'])
 @login_required
 def add_category():
-    if current_user.role != 'Admin': return jsonify({"status":"error"}), 403
-    name = request.form.get('name')
-    if name:
-        new_cat = Category(name=name)
-        db.session.add(new_cat)
-        db.session.commit()
+    if current_user.role == 'Admin':
+        name = request.form.get('name')
+        if name and not Category.query.filter_by(name=name).first():
+            db.session.add(Category(name=name))
+            db.session.commit()
     return redirect(url_for('cnn_admin'))
 
 @app.route('/api/report', methods=['POST'])
 @login_required
 def create_report():
     try:
-        new_incident = Incident(
+        new_inc = Incident(
             incident_type=request.form.get('type'),
             description=request.form.get('description'),
             latitude=float(request.form.get('lat')),
             longitude=float(request.form.get('lng')),
             user_id=current_user.id
         )
-        db.session.add(new_incident)
+        db.session.add(new_inc)
         db.session.commit()
         return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+    except:
+        return jsonify({"status": "error"}), 400
 
 @app.route('/api/incidents', methods=['GET'])
 @login_required
@@ -130,8 +141,8 @@ def get_incidents():
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.form
-    hashed_pw = generate_password_hash(data.get('password'))
-    new_user = User(username=data.get('username'), password=hashed_pw, role=data.get('role'))
+    hashed = generate_password_hash(data.get('password'))
+    new_user = User(username=data.get('username'), password=hashed, role=data.get('role'))
     db.session.add(new_user)
     db.session.commit()
     return jsonify({"status": "success"})
@@ -154,11 +165,10 @@ def logout():
 def reset_db():
     db.drop_all()
     db.create_all()
-    # Add default categories
-    for name in ['Theft', 'Vandalism', 'Assault']:
-        db.session.add(Category(name=name))
+    for n in ['Theft', 'Vandalism', 'Assault']:
+        db.session.add(Category(name=n))
     db.session.commit()
-    return "Database Reset with Categories!"
+    return "Database Polished and Reset!"
 
 if __name__ == '__main__':
     with app.app_context():
