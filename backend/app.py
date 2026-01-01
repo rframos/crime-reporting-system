@@ -15,11 +15,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from tensorflow.keras import backend as K
 
-# --- DIRECTORY SETUP ---
+# --- SETUP ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
 
-# --- CONFIG ---
 app.config['SECRET_KEY'] = 'safecity_sjdm_2026_final'
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['TRAIN_FOLDER'] = os.path.join(base_dir, 'static/training_data')
@@ -59,7 +58,7 @@ class Incident(db.Model):
     longitude = db.Column(db.Float)
     status = db.Column(db.String(20), default='Pending')
     severity = db.Column(db.String(20), default='Low')
-    confidence = db.Column(db.Float, default=0.0) # NEW
+    confidence = db.Column(db.Float, default=0.0)
     image_url = db.Column(db.String(255), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'))
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
@@ -67,27 +66,19 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- RBAC DECORATOR ---
+# --- RBAC ---
 def roles_required(*roles):
     def decorator(f):
         @wraps(f)
+        @login_required
         def decorated_function(*args, **kwargs):
-            if not current_user.is_authenticated or current_user.role not in roles:
+            if current_user.role not in roles:
                 return abort(403)
             return f(*args, **kwargs)
         return decorated_function
     return decorator
 
-# --- UTILITIES ---
-def get_dataset_counts():
-    counts = {}
-    if os.path.exists(app.config['TRAIN_FOLDER']):
-        for d in os.listdir(app.config['TRAIN_FOLDER']):
-            p = os.path.join(app.config['TRAIN_FOLDER'], d)
-            if os.path.isdir(p): counts[d] = len(os.listdir(p))
-    return counts
-
-# --- AI ENGINE ---
+# --- AI LOGIC ---
 def process_and_classify(image_path):
     if not os.path.exists(app.config['MODEL_PATH']): return None, None, 0
     try:
@@ -95,29 +86,30 @@ def process_and_classify(image_path):
         model = tf.keras.models.load_model(app.config['MODEL_PATH'])
         img = cv2.resize(cv2.imread(image_path), (150, 150))
         img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
-        res = model.predict(img)
-        idx = np.argmax(res)
-        conf = float(np.max(res) * 100) # Confidence %
-        all_cats = Category.query.order_by(Category.id).all()
+        preds = model.predict(img)
+        idx = np.argmax(preds[0])
+        conf = float(np.max(preds[0]) * 100)
+        cats = Category.query.order_by(Category.id).all()
         K.clear_session()
-        if idx < len(all_cats): return all_cats[idx].name, all_cats[idx].severity, conf
+        if idx < len(cats): return cats[idx].name, cats[idx].severity, conf
     except: pass
     return None, None, 0
 
 # --- ROUTES ---
 @app.route('/')
 @login_required
-def index(): return render_template('index.html', categories=Category.query.all())
+def index(): 
+    return render_template('index.html', categories=Category.query.all())
 
 @app.route('/heatmap')
 @roles_required('Admin', 'Police', 'Barangay')
-def heatmap(): 
-    incidents = Incident.query.all()
-    return render_template('heatmap.html', incidents=incidents)
+def heatmap_page(): 
+    return render_template('heatmap.html', categories=Category.query.all())
 
 @app.route('/contact')
 @roles_required('Resident', 'Barangay')
-def contact(): return render_template('contacts.html')
+def contact_page(): 
+    return render_template('contacts.html')
 
 @app.route('/reports')
 @roles_required('Admin', 'Police', 'Barangay')
@@ -128,7 +120,23 @@ def reports():
 @app.route('/cnn-admin')
 @roles_required('Admin')
 def cnn_admin():
-    return render_template('cnn_admin.html', categories=Category.query.all(), counts=get_dataset_counts())
+    counts = {}
+    if os.path.exists(app.config['TRAIN_FOLDER']):
+        for d in os.listdir(app.config['TRAIN_FOLDER']):
+            if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d)):
+                counts[d] = len(os.listdir(os.path.join(app.config['TRAIN_FOLDER'], d)))
+    return render_template('cnn_admin.html', categories=Category.query.all(), counts=counts)
+
+# --- API ---
+@app.route('/api/incidents')
+@login_required
+def get_incidents_api():
+    incidents = Incident.query.all()
+    return jsonify([{
+        "lat": i.latitude, 
+        "lng": i.longitude, 
+        "type": i.incident_type
+    } for i in incidents])
 
 @app.route('/api/report', methods=['POST'])
 @login_required
@@ -137,22 +145,32 @@ def create_report():
     lat, lng = request.form.get('lat'), request.form.get('lng')
     final_type = request.form.get('type')
     cat = Category.query.filter_by(name=final_type).first()
-    final_sev = cat.severity if cat else "Low"
-    final_conf = 0.0
-    filename = None
+    f_sev, f_conf, f_name = (cat.severity if cat else "Low"), 0.0, None
     if img:
-        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
-        path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        f_name = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
+        path = os.path.join(app.config['UPLOAD_FOLDER'], f_name)
         img.save(path)
         ai_t, ai_s, ai_c = process_and_classify(path)
-        if ai_t: final_type, final_sev, final_conf = ai_t, ai_s, ai_c
+        if ai_t: final_type, f_sev, f_conf = ai_t, ai_s, ai_c
     new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
-                       latitude=float(lat), longitude=float(lng), image_url=filename,
-                       severity=final_sev, confidence=round(final_conf, 2), user_id=current_user.id)
+                       latitude=float(lat), longitude=float(lng), image_url=f_name,
+                       severity=f_sev, confidence=round(f_conf, 2), user_id=current_user.id)
     db.session.add(new_inc); db.session.commit()
-    return jsonify({"status": "success", "classified_as": final_type, "confidence": final_conf})
+    return jsonify({"status": "success", "classified_as": final_type, "confidence": f_conf})
 
-# --- (Rest of Auth/Training routes from previous version) ---
+# --- RESET & AUTH ---
+@app.route('/reset-db')
+def reset_db():
+    if os.path.exists(app.config['TRAIN_FOLDER']): shutil.rmtree(app.config['TRAIN_FOLDER'])
+    os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
+    if os.path.exists(app.config['MODEL_PATH']): os.remove(app.config['MODEL_PATH'])
+    db.drop_all(); db.create_all()
+    for n, s in [('Theft','Medium'), ('Fire','Critical')]:
+        db.session.add(Category(name=n, severity=s))
+        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], n), exist_ok=True)
+    db.session.commit()
+    return redirect(url_for('login_page'))
+
 @app.route('/login')
 def login_page(): return render_template('login.html')
 
