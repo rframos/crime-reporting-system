@@ -1,18 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SafeCity | Hotlines</title>
+    <title>SJDM | Contacts</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>.main-content { margin-left: 260px; padding: 40px; }</style>
+    <style>.main-content { margin-left: 260px; padding: 40px; } .card { border-left: 5px solid #0038A8; }</style>
 </head>
 <body class="bg-light">
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <h2 class="fw-bold mb-4">Emergency Contact Directory</h2>
-        <div class="row g-4">
-            <div class="col-md-4"><div class="card p-4 shadow-sm border-0 text-center"><h5>Police SJDM</h5><p class="h3 text-primary">0912-XXX-XXXX</p></div></div>
-            <div class="col-md-4"><div class="card p-4 shadow-sm border-0 text-center"><h5>Ambulance</h5><p class="h3 text-danger">911</p></div></div>
-            <div class="col-md-4"><div class="card p-4 shadow-sm border-0 text-center"><h5>Fire Station</h5><p class="h3 text-warning">0922-XXX-XXXX</p></div></div>
+        <h2 class="fw-bold mb-4">Emergency Hotlines</h2>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm">
+                    <h5 class="fw-bold">SJDM Police Station</h5>
+                    <p class="mb-0 text-primary fw-bold">📞 (044) 815-8888</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm">
+                    <h5 class="fw-bold">SJDM Fire Station</h5>
+                    <p class="mb-0 text-danger fw-bold">📞 (044) 306-0158</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card p-3 shadow-sm">
+                    <h5 class="fw-bold">SJDM CDRRMO (Rescue)</h5>
+                    <p class="mb-0 text-success fw-bold">📞 0917-815-1234</p>
+                </div>
+            </div>
         </div>
     </div>
 </body>
