@@ -3,6 +3,7 @@ import datetime
 import numpy as np
 import cv2
 import tensorflow as tf
+import shutil
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, redirect, url_for, abort
 from flask_sqlalchemy import SQLAlchemy
@@ -10,14 +11,17 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
+# --- INITIAL SETUP ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
-app.config['SECRET_KEY'] = 'safecity_sjdm_2026_full'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///local.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+app.config['SECRET_KEY'] = 'safecity_sjdm_2026_final_v2'
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['TRAIN_FOLDER'] = os.path.join(base_dir, 'static/training_data')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///local.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
 
@@ -30,7 +34,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='Resident') 
+    role = db.Column(db.String(20), default='Resident') # Admin, Police, Barangay, Resident
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -47,9 +51,16 @@ class Incident(db.Model):
     image_url = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
+class Notification(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.String(255))
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
+# --- ACCESS CONTROL ---
 def roles_required(*roles):
     def decorator(f):
         @wraps(f)
@@ -60,69 +71,54 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- CNN ADMIN ROUTES ---
-@app.route('/cnn-admin')
-@roles_required('Admin')
-def cnn_admin():
-    categories = Category.query.all()
-    dataset = {}
-    for cat in categories:
-        cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
-        if os.path.exists(cat_path):
-            dataset[cat.name] = os.listdir(cat_path)
-        else:
-            dataset[cat.name] = []
-    return render_template('cnn_admin.html', categories=categories, dataset=dataset)
-
-@app.route('/api/categories', methods=['POST'])
-@roles_required('Admin')
-def add_category():
-    name = request.form.get('name').strip()
-    severity = request.form.get('severity')
-    if name and not Category.query.filter_by(name=name).first():
-        db.session.add(Category(name=name, severity=severity))
+# --- THE RESET ROUTE (FIXED) ---
+@app.route('/reset-db')
+def reset_db():
+    """Drops all tables and recreates the system from scratch."""
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+        
+        # Re-add default categories
+        cats = [
+            Category(name="Theft", severity="Medium"),
+            Category(name="Vandalism", severity="Low"),
+            Category(name="Assault", severity="High")
+        ]
+        db.session.add_all(cats)
         db.session.commit()
-        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], name), exist_ok=True)
+        
+        # Ensure training folders exist for these cats
+        for c in cats:
+            os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], c.name), exist_ok=True)
+            
+    return "Database Reset Successful! All data cleared. Default categories (Theft, Vandalism, Assault) restored. <a href='/register'>Register Admin</a>"
+
+# --- CATEGORY & IMAGE MGMT ---
+@app.route('/api/categories/delete/<int:id>', methods=['POST'])
+@roles_required('Admin')
+def delete_category(id):
+    cat = Category.query.get(id)
+    if cat:
+        # Remove training folder
+        shutil.rmtree(os.path.join(app.config['TRAIN_FOLDER'], cat.name), ignore_errors=True)
+        db.session.delete(cat)
+        db.session.commit()
     return redirect(url_for('cnn_admin'))
 
-@app.route('/api/upload-training', methods=['POST'])
-@roles_required('Admin')
-def upload_training():
-    cat_name = request.form.get('category')
-    files = request.files.getlist('images')
-    cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat_name)
-    for f in files:
-        if f: f.save(os.path.join(cat_path, secure_filename(f.filename)))
-    return redirect(url_for('cnn_admin'))
-
-@app.route('/api/delete-training-img', methods=['POST'])
-@roles_required('Admin')
-def delete_training_img():
-    data = request.json
-    file_path = os.path.join(app.config['TRAIN_FOLDER'], data['category'], data['filename'])
-    if os.path.exists(file_path):
-        os.remove(file_path)
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 404
-
-@app.route('/api/train-model', methods=['POST'])
-@roles_required('Admin')
-def train_model():
-    # Placeholder for actual TensorFlow training script
-    # Logic would involve: loading TRAIN_FOLDER images, label encoding, 
-    # building a Sequential model, and saving as 'crime_model.h5'
-    return jsonify({"status": "success", "message": "Training started in background."})
-
-# --- GENERAL ROUTES ---
+# --- AUTH & PAGE ROUTES ---
 @app.route('/')
 @login_required
 def index(): return render_template('index.html', categories=Category.query.all())
 
-@app.route('/reports')
-@roles_required('Admin', 'Police', 'Barangay')
-def reports():
-    incidents = Incident.query.order_by(Incident.created_at.desc()).all()
-    return render_template('reports.html', incidents=incidents)
+@app.route('/cnn-admin')
+@roles_required('Admin')
+def cnn_admin():
+    categories = Category.query.all()
+    dataset = {cat.name: os.listdir(os.path.join(app.config['TRAIN_FOLDER'], cat.name)) 
+               if os.path.exists(os.path.join(app.config['TRAIN_FOLDER'], cat.name)) else [] 
+               for cat in categories}
+    return render_template('cnn_admin.html', categories=categories, dataset=dataset)
 
 @app.route('/login')
 def login_page(): return render_template('login.html')
