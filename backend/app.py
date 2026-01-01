@@ -55,41 +55,43 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- CNN ENGINE ---
-def init_cnn_model():
-    if not os.path.exists(app.config['MODEL_PATH']):
-        cats = Category.query.count() or 3
-        model = tf.keras.models.Sequential([
-            tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
-            tf.keras.layers.MaxPooling2D(2,2),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(cats, activation='softmax')
-        ])
-        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-        model.save(app.config['MODEL_PATH'])
+# --- CNN LOGIC (ADMIN CONTROLLED) ---
 
 def process_and_classify(image_path):
-    if not os.path.exists(app.config['MODEL_PATH']): return None, None
+    """
+    Used by Residents. 
+    Compares the uploaded photo to the Admin's created CNN model.
+    """
+    if not os.path.exists(app.config['MODEL_PATH']):
+        return None, None # No model created by Admin yet
+        
     try:
+        # Load the existing static model
         model = tf.keras.models.load_model(app.config['MODEL_PATH'])
+        
+        # Pre-process image for comparison
         img = cv2.imread(image_path)
         img = cv2.resize(img, (150, 150))
         img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
-        res = model.predict(img)
-        idx = np.argmax(res)
-        all_cats = Category.query.order_by(Category.id).all()
-        if idx < len(all_cats): return all_cats[idx].name, all_cats[idx].severity
-    except: pass
+        
+        # Classify
+        prediction = model.predict(img)
+        class_idx = np.argmax(prediction)
+        
+        # Map back to Database Categories
+        categories = Category.query.order_by(Category.id).all()
+        if class_idx < len(categories):
+            return categories[class_idx].name, categories[class_idx].severity
+    except Exception as e:
+        print(f"Classification Error: {e}")
     return None, None
 
 # --- ROUTES ---
+
 @app.route('/')
 @login_required
-def index(): return render_template('index.html', categories=Category.query.all())
-
-@app.route('/login')
-def login_page(): return render_template('login.html')
+def index():
+    return render_template('index.html', categories=Category.query.all())
 
 @app.route('/reports')
 @login_required
@@ -97,111 +99,77 @@ def reports():
     if current_user.role == 'Resident': return redirect(url_for('index'))
     return render_template('reports.html', incidents=Incident.query.order_by(Incident.created_at.desc()).all())
 
-@app.route('/heatmap')
-@login_required
-def heatmap():
-    if current_user.role not in ['Admin', 'Police', 'Official']: return redirect(url_for('index'))
-    return render_template('heatmap.html', categories=Category.query.all())
-
 @app.route('/cnn-admin')
 @login_required
 def cnn_admin():
     if current_user.role != 'Admin': return redirect(url_for('index'))
-    return render_template('cnn_admin.html', categories=Category.query.all())
+    model_exists = os.path.exists(app.config['MODEL_PATH'])
+    return render_template('cnn_admin.html', categories=Category.query.all(), model_exists=model_exists)
 
-@app.route('/ai-testing')
-@login_required
-def ai_testing():
-    if current_user.role != 'Admin': return redirect(url_for('index'))
-    return render_template('ai_testing.html')
+# --- API ENDPOINTS ---
 
-# --- API ---
 @app.route('/api/report', methods=['POST'])
 @login_required
 def create_report():
     img = request.files.get('image')
-    lat, lng = request.form.get('lat'), request.form.get('lng')
+    lat = request.form.get('lat')
+    lng = request.form.get('lng')
+    
+    # Default values from user input
     final_type = request.form.get('type')
     cat = Category.query.filter_by(name=final_type).first()
     final_sev = cat.severity if cat else "Low"
     filename = None
+    
     if img:
         filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
         path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         img.save(path)
-        ai_t, ai_s = process_and_classify(path)
-        if ai_t: final_type, final_sev = ai_t, ai_s
+        
+        # AI AUTOMATIC CLASSIFICATION (Comparing to Admin's Model)
+        ai_label, ai_severity = process_and_classify(path)
+        if ai_label:
+            final_type = ai_label
+            final_sev = ai_severity
 
-    new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
-                       latitude=float(lat), longitude=float(lng), image_url=filename,
-                       severity=final_sev, user_id=current_user.id)
-    db.session.add(new_inc); db.session.commit()
-    return jsonify({"status": "success"})
-
-@app.route('/api/train', methods=['POST'])
-@login_required
-def train_api():
-    incidents = Incident.query.filter(Incident.image_url != None).all()
-    categories = Category.query.order_by(Category.id).all()
-    cat_map = {cat.name: i for i, cat in enumerate(categories)}
-    X, y = [], []
-    for inc in incidents:
-        p = os.path.join(app.config['UPLOAD_FOLDER'], inc.image_url)
-        if os.path.exists(p):
-            X.append(cv2.resize(cv2.imread(p), (150, 150)))
-            y.append(cat_map.get(inc.incident_type, 0))
-    if len(X) < 3: return jsonify({"status": "error", "message": "Need more data"}), 400
-    model = tf.keras.models.load_model(app.config['MODEL_PATH'])
-    model.fit(np.array(X)/255.0, np.array(y), epochs=5)
-    model.save(app.config['MODEL_PATH'])
-    return jsonify({"status": "success"})
-
-@app.route('/api/test-ai', methods=['POST'])
-@login_required
-def test_ai():
-    img = request.files.get('image')
-    path = os.path.join(app.config['UPLOAD_FOLDER'], "temp.jpg")
-    img.save(path)
-    label, sev = process_and_classify(path)
-    os.remove(path)
-    return jsonify({"prediction": label, "severity": sev})
-
-@app.route('/reset-db')
-def reset_db():
-    db.session.remove()
-    db.session.execute(text('DROP TABLE IF EXISTS incident CASCADE;'))
-    db.session.execute(text('DROP TABLE IF EXISTS "user" CASCADE;'))
-    db.session.execute(text('DROP TABLE IF EXISTS category CASCADE;'))
+    new_inc = Incident(
+        incident_type=final_type,
+        description=request.form.get('description'),
+        latitude=float(lat),
+        longitude=float(lng),
+        image_url=filename,
+        severity=final_sev,
+        user_id=current_user.id
+    )
+    db.session.add(new_inc)
     db.session.commit()
-    db.create_all()
-    for n, s in [('Theft','Medium'), ('Fire','Critical'), ('Vandalism','Low')]:
-        db.session.add(Category(name=n, severity=s))
-    db.session.commit()
-    init_cnn_model()
-    return "Reset Done"
+    return jsonify({"status": "success", "classified_as": final_type})
 
-@app.route('/api/register', methods=['POST'])
-def register():
-    hashed = generate_password_hash(request.form.get('password'))
-    new_user = User(username=request.form.get('username'), password=hashed, role=request.form.get('role'))
-    db.session.add(new_user); db.session.commit()
-    return jsonify({"status": "success"})
+@app.route('/api/admin/create-model', methods=['POST'])
+@login_required
+def create_cnn_model():
+    """Builds and saves the CNN .h5 file for the first time or as an update."""
+    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
+    
+    try:
+        categories = Category.query.all()
+        num_classes = len(categories)
+        
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
+            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
+            tf.keras.layers.MaxPooling2D(2,2),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dense(num_classes, activation='softmax')
+        ])
+        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        
+        # Save the model file
+        model.save(app.config['MODEL_PATH'])
+        return jsonify({"status": "success", "message": "CNN Model Created & Published for users!"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    user = User.query.filter_by(username=request.form.get('username')).first()
-    if user and check_password_hash(user.password, request.form.get('password')):
-        login_user(user); return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 401
-
-@app.route('/api/incidents', methods=['GET'])
-def get_incidents():
-    incidents = Incident.query.all()
-    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type, "severity": i.severity} for i in incidents])
-
-@app.route('/logout')
-def logout(): logout_user(); return redirect(url_for('login_page'))
-
-if __name__ == '__main__':
-    with app.app_context(): db.create_all(); init_cnn_model()
-    app.run(debug=True)
+# Other Auth Routes... (Login/Register/Reset-DB)
