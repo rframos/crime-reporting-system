@@ -1,4 +1,3 @@
-// Center: San Jose del Monte, Bulacan
 var map = L.map('map').setView([14.8091, 121.0459], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
