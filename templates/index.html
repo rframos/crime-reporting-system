@@ -1,39 +1,61 @@
 <!DOCTYPE html>
 <html>
-<head><title>Map</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /></head>
-<body>
+<head>
+    <title>SafeCity | Map</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>.main-content { margin-left: 260px; padding: 40px; } #map { height: 500px; border-radius: 15px; }</style>
+</head>
+<body class="bg-light">
     {% include 'sidebar.html' %}
-    <div style="margin-left:260px; padding:40px;">
-        <h2 class="fw-bold mb-4">Report Incident</h2>
+    <div class="main-content">
+        <h2 class="fw-bold mb-4">Report an Incident</h2>
+        
+        <div id="notif" class="alert alert-success d-none shadow" style="position: fixed; top: 20px; right: 20px; z-index: 2000;">
+            ✅ Report submitted! Officials have been notified.
+        </div>
+
         <div class="row">
-            <div class="col-8"><div id="map" style="height:500px; border-radius:15px;"></div></div>
-            <div class="col-4">
-                <form id="reportForm">
-                    <input type="hidden" id="lat" name="lat"><input type="hidden" id="lng" name="lng">
-                    <div class="mb-2"><label>Photo</label><input type="file" name="image" class="form-control" required></div>
-                    <div class="mb-3"><label>Type</label><select name="type" class="form-select">{% for c in categories %}<option value="{{c.name}}">{{c.name}}</option>{% endfor %}</select></div>
-                    <button class="btn btn-primary w-100" id="subBtn">Submit</button>
-                </form>
-                <div id="res" class="mt-3 alert d-none"></div>
+            <div class="col-lg-8"><div id="map"></div></div>
+            <div class="col-lg-4">
+                <div class="card p-4 shadow-sm border-0">
+                    <form id="reportForm">
+                        <input type="hidden" id="lat" name="lat">
+                        <input type="hidden" id="lng" name="lng">
+                        <div class="mb-3"><label>Evidence Photo</label><input type="file" name="image" class="form-control" required></div>
+                        <div class="mb-3">
+                            <label>Type</label>
+                            <select name="type" class="form-select">
+                                {% for c in categories %}<option value="{{c.name}}">{{c.name}}</option>{% endfor %}
+                            </select>
+                        </div>
+                        <button class="btn btn-primary w-100" id="subBtn">Submit Report</button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         const map = L.map('map').setView([14.8087, 121.0450], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         let marker;
-        map.on('click', e => {
-            if(marker) map.removeLayer(marker); marker = L.marker(e.latlng).addTo(map);
-            document.getElementById('lat').value = e.latlng.lat; document.getElementById('lng').value = e.latlng.lng;
+        map.on('click', e => { 
+            if(marker) map.removeLayer(marker); 
+            marker = L.marker(e.latlng).addTo(map);
+            document.getElementById('lat').value = e.latlng.lat;
+            document.getElementById('lng').value = e.latlng.lng;
         });
+
         document.getElementById('reportForm').onsubmit = async e => {
             e.preventDefault();
-            const res = await fetch('/api/report', {method:'POST', body:new FormData(e.target)});
-            const d = await res.json();
-            const alertBox = document.getElementById('res');
-            alertBox.className = "alert alert-success d-block";
-            alertBox.innerHTML = `AI Result: ${d.classified_as} (${d.confidence}%)`;
+            const res = await fetch('/api/report', {method:'POST', body: new FormData(e.target)});
+            if(res.ok) {
+                const notif = document.getElementById('notif');
+                notif.classList.remove('d-none');
+                setTimeout(() => notif.classList.add('d-none'), 4000);
+            }
         };
     </script>
 </body>
