@@ -43,7 +43,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='Resident') # Admin, Police, Barangay, Resident
+    role = db.Column(db.String(20), default='Resident') 
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -66,7 +66,7 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- RBAC DECORATOR ---
+# --- RBAC ---
 def roles_required(*roles):
     def decorator(f):
         @wraps(f)
@@ -78,7 +78,7 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- AI CLASSIFICATION ---
+# --- AI LOGIC ---
 def process_and_classify(image_path):
     if not os.path.exists(app.config['MODEL_PATH']): return None, None, 0
     try:
@@ -107,11 +107,6 @@ def index():
 def heatmap_page(): 
     return render_template('heatmap.html', categories=Category.query.all())
 
-@app.route('/contact')
-@roles_required('Resident', 'Barangay')
-def contact_page(): 
-    return render_template('contacts.html')
-
 @app.route('/reports')
 @roles_required('Admin', 'Police', 'Barangay')
 def reports():
@@ -127,13 +122,6 @@ def cnn_admin():
             p = os.path.join(app.config['TRAIN_FOLDER'], d)
             if os.path.isdir(p): counts[d] = len(os.listdir(p))
     return render_template('cnn_admin.html', categories=Category.query.all(), counts=counts)
-
-# --- API ---
-@app.route('/api/incidents')
-@login_required
-def get_incidents_api():
-    inc = Incident.query.all()
-    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type} for i in inc])
 
 @app.route('/api/report', methods=['POST'])
 @login_required
@@ -155,38 +143,14 @@ def create_report():
     db.session.add(new_inc); db.session.commit()
     return jsonify({"status": "success", "classified_as": final_type, "confidence": f_conf})
 
-# --- CNN GALLERY API ---
-@app.route('/api/admin/gallery/<category_name>')
-@login_required
-def get_gallery(category_name):
-    path = os.path.join(app.config['TRAIN_FOLDER'], category_name)
-    if not os.path.exists(path): return jsonify([])
-    return jsonify([img for img in os.listdir(path) if img.lower().endswith(('.png', '.jpg', '.jpeg'))])
-
-@app.route('/api/admin/delete-training-image', methods=['POST'])
-@roles_required('Admin')
-def delete_training_image():
-    data = request.json
-    path = os.path.join(app.config['TRAIN_FOLDER'], data.get('category'), data.get('filename'))
-    if os.path.exists(path): os.remove(path)
-    return jsonify({"status": "success"})
-
-@app.route('/api/admin/train-status')
-@login_required
-def train_status(): return jsonify(training_info)
-
-# --- AUTH & SETUP ---
 @app.route('/reset-db')
 def reset_db():
-    if os.path.exists(app.config['TRAIN_FOLDER']): shutil.rmtree(app.config['TRAIN_FOLDER'])
-    os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
     db.drop_all(); db.create_all()
-    # Seed Data
     admin = User(username='admin', password=generate_password_hash('admin123'), role='Admin')
     police = User(username='police', password=generate_password_hash('police123'), role='Police')
     db.session.add_all([admin, police, Category(name='Theft', severity='Medium')])
     db.session.commit()
-    return "Database Reset. Users: admin/admin123, police/police123"
+    return "Reset Success. admin/admin123"
 
 @app.route('/login')
 def login_page(): return render_template('login.html')
