@@ -32,7 +32,7 @@
         <div class="row">
             <div class="col-lg-7">
                 <div class="card p-4">
-                    <h5 class="fw-bold mb-3">1. Categories & Upload</h5>
+                    <h5 class="fw-bold mb-3">1. Management & Upload</h5>
                     <form action="/api/admin/add-category" method="POST" class="row g-2 mb-3">
                         <div class="col-md-6"><input type="text" name="name" class="form-control" placeholder="Category Name" required></div>
                         <div class="col-md-4"><select name="severity" class="form-select"><option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option><option value="Critical">Critical</option></select></div>
@@ -58,12 +58,12 @@
                     <p id="lastRun" class="small text-muted mt-2"></p>
                 </div>
                 
-                <div class="card p-4 border-primary">
-                    <h5 class="fw-bold text-primary">3. Backup & Restore</h5>
-                    <p class="small text-muted">Use this to save your dataset before a system reset.</p>
+                <div class="card p-4">
+                    <h5 class="fw-bold">3. Backup & Data Tools</h5>
                     <div class="d-flex gap-2">
-                        <a href="/api/admin/download-dataset" class="btn btn-outline-primary flex-grow-1">Download ZIP Backup</a>
-                        <button onclick="document.getElementById('zipInput').click()" class="btn btn-outline-secondary flex-grow-1">Restore from ZIP</button>
+                        <a href="/api/admin/download-dataset" class="btn btn-outline-primary flex-grow-1">Download ZIP</a>
+                        <button onclick="document.getElementById('zipInput').click()" class="btn btn-outline-secondary flex-grow-1">Restore ZIP</button>
+                        <button onclick="triggerReset()" class="btn btn-outline-danger flex-grow-1">FULL RESET</button>
                     </div>
                     <input type="file" id="zipInput" style="display:none" onchange="restoreDataset(this)">
                 </div>
@@ -99,6 +99,12 @@
         setInterval(checkStatus, 3000);
 
         async function startTraining() { await fetch('/api/admin/train-model', { method: 'POST' }); }
+
+        function triggerReset() {
+            if(confirm("WARNING: This will delete ALL users, reports, training images, and your AI model. Are you 100% sure?")) {
+                window.location.href = "/reset-db";
+            }
+        }
 
         async function restoreDataset(input) {
             if(!input.files[0]) return;
