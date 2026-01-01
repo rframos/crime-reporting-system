@@ -4,12 +4,14 @@ import numpy as np
 import cv2
 import tensorflow as tf
 import threading
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+import shutil
+import zipfile
+from io import BytesIO
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from sqlalchemy import text
 from tensorflow.keras import backend as K
 
 # --- DIRECTORY SETUP ---
@@ -34,7 +36,6 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login_page'
 
-# Global Status for Training
 training_info = {"status": "Idle", "last_run": "Never"}
 
 # --- MODELS ---
@@ -64,7 +65,6 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- HELPERS ---
 def get_dataset_counts():
     counts = {}
     if os.path.exists(app.config['TRAIN_FOLDER']):
@@ -74,7 +74,47 @@ def get_dataset_counts():
                 counts[cat_dir] = len(os.listdir(path))
     return counts
 
-# --- AI THREADED TRAINING ENGINE ---
+# --- BACKUP & RESTORE LOGIC ---
+
+@app.route('/api/admin/download-dataset')
+@login_required
+def download_dataset():
+    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
+    
+    memory_file = BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(app.config['TRAIN_FOLDER']):
+            for file in files:
+                file_path = os.path.join(root, file)
+                # Create a relative path for the zip file
+                arcname = os.path.relpath(file_path, app.config['TRAIN_FOLDER'])
+                zf.write(file_path, arcname)
+    
+    memory_file.seek(0)
+    return send_file(memory_file, download_name="safecity_dataset_backup.zip", as_attachment=True)
+
+@app.route('/api/admin/restore-dataset', methods=['POST'])
+@login_required
+def restore_dataset():
+    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
+    file = request.files.get('zip_file')
+    if not file: return jsonify({"status": "error", "message": "No file"}), 400
+    
+    with zipfile.ZipFile(file, 'r') as zf:
+        zf.extractall(app.config['TRAIN_FOLDER'])
+        
+        # Automatically sync Database Categories with extracted folders
+        extracted_folders = [d for d in os.listdir(app.config['TRAIN_FOLDER']) 
+                           if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d))]
+        
+        for folder in extracted_folders:
+            if not Category.query.filter_by(name=folder).first():
+                db.session.add(Category(name=folder, severity="Medium"))
+        db.session.commit()
+        
+    return jsonify({"status": "success", "message": "Dataset restored and categories synced!"})
+
+# --- AI THREADED TRAINING ---
 def run_training_task(app_context, categories):
     global training_info
     try:
@@ -107,8 +147,6 @@ def run_training_task(app_context, categories):
                 tf.keras.layers.Dense(len(categories), activation='softmax')
             ])
             model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-            
-            # Using 5 epochs to keep it fast and prevent timeouts
             model.fit(X, y, epochs=5, batch_size=4, verbose=0)
             model.save(app.config['MODEL_PATH'])
             
@@ -118,17 +156,13 @@ def run_training_task(app_context, categories):
     except Exception as e:
         training_info["status"] = f"Error: {str(e)}"
     finally:
-        # Final safety to ensure memory is released
         K.clear_session()
 
-# --- ADMIN API ---
+# --- ROUTES ---
 @app.route('/api/admin/train-model', methods=['POST'])
 @login_required
 def train_model():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
-    if "Training" in training_info["status"]:
-        return jsonify({"status": "busy", "message": "Already training."})
-    
     categories = Category.query.order_by(Category.id).all()
     thread = threading.Thread(target=run_training_task, args=(app.app_context(), categories))
     thread.start()
@@ -136,8 +170,7 @@ def train_model():
 
 @app.route('/api/admin/train-status')
 @login_required
-def train_status():
-    return jsonify(training_info)
+def train_status(): return jsonify(training_info)
 
 @app.route('/api/admin/add-category', methods=['POST'])
 @login_required
@@ -167,7 +200,6 @@ def upload_training():
 @app.route('/api/admin/gallery/<category_name>')
 @login_required
 def get_gallery(category_name):
-    if current_user.role != 'Admin': return jsonify([]), 403
     cat_path = os.path.join(app.config['TRAIN_FOLDER'], category_name)
     if not os.path.exists(cat_path): return jsonify([])
     images = [img for img in os.listdir(cat_path) if img.lower().endswith(('.png', '.jpg', '.jpeg'))]
@@ -176,15 +208,11 @@ def get_gallery(category_name):
 @app.route('/api/admin/delete-training-image', methods=['POST'])
 @login_required
 def delete_training_image():
-    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
     data = request.json
     file_path = os.path.join(app.config['TRAIN_FOLDER'], data.get('category'), data.get('filename'))
-    if os.path.exists(file_path):
-        os.remove(file_path)
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 404
+    if os.path.exists(file_path): os.remove(file_path)
+    return jsonify({"status": "success"})
 
-# --- RESIDENT ACTIONS ---
 def process_and_classify(image_path):
     if not os.path.exists(app.config['MODEL_PATH']): return None, None
     try:
@@ -221,7 +249,6 @@ def create_report():
     db.session.add(new_inc); db.session.commit()
     return jsonify({"status": "success", "classified_as": final_type})
 
-# --- PAGE ROUTES ---
 @app.route('/')
 @login_required
 def index(): return render_template('index.html', categories=Category.query.all())
@@ -238,7 +265,6 @@ def cnn_admin():
     if current_user.role != 'Admin': return redirect(url_for('index'))
     return render_template('cnn_admin.html', categories=Category.query.all(), counts=get_dataset_counts())
 
-# --- AUTH ---
 @app.route('/login')
 def login_page(): return render_template('login.html')
 
