@@ -1,25 +1,15 @@
 <div class="sidebar" style="height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; z-index: 1000;">
     <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
-    
-    <a href="/" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/' %}bg-primary{% endif %}">📍 Map Dashboard</a>
-
-    {% if current_user.role in ['Admin', 'Police', 'Barangay'] %}
-    <a href="/heatmap" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/heatmap' %}bg-primary{% endif %}">🔥 Crime Heatmap</a>
-    <a href="/reports" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/reports' %}bg-primary{% endif %}">📋 Incident Reports</a>
+    <a href="/" class="d-block py-2 px-4 text-white text-decoration-none border-bottom">📍 Map Dashboard</a>
+    {% if current_user.role in ['Admin', 'Police'] %}
+    <a href="/heatmap" class="d-block py-2 px-4 text-white text-decoration-none border-bottom">🔥 Heatmap</a>
+    <a href="/reports" class="d-block py-2 px-4 text-white text-decoration-none border-bottom">📋 Reports</a>
     {% endif %}
-
-    {% if current_user.role in ['Resident', 'Barangay'] %}
-    <a href="/contact" class="d-block py-2 px-4 text-white text-decoration-none {% if request.path == '/contact' %}bg-primary{% endif %}">📞 Hotlines</a>
-    {% endif %}
-
     {% if current_user.role == 'Admin' %}
-    <hr style="border-color: rgba(255,255,255,0.1)">
-    <a href="/cnn-admin" class="d-block py-2 px-4 text-info text-decoration-none {% if request.path == '/cnn-admin' %}bg-dark{% endif %}">⚙️ CNN Management</a>
+    <a href="/cnn-admin" class="d-block py-2 px-4 text-info text-decoration-none border-bottom">⚙️ CNN Admin</a>
     {% endif %}
-
     <div class="px-4 mt-5">
-        <div class="small text-muted">User: {{ current_user.username }}</div>
-        <div class="badge bg-secondary mb-3">{{ current_user.role }}</div>
-        <a href="/logout" class="btn btn-sm btn-outline-danger w-100">Sign Out</a>
+        <span class="badge bg-primary w-100">{{ current_user.username }} ({{ current_user.role }})</span>
+        <a href="/logout" class="btn btn-sm btn-outline-danger w-100 mt-3">Sign Out</a>
     </div>
 </div>
