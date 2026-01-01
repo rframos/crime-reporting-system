@@ -3,6 +3,7 @@ import datetime
 import numpy as np
 import cv2
 import tensorflow as tf
+import threading
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -32,6 +33,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login_page'
+
+# Global Status for Training
+training_info = {"status": "Idle", "last_run": None}
 
 # --- MODELS ---
 class User(UserMixin, db.Model):
@@ -70,23 +74,69 @@ def get_dataset_counts():
                 counts[cat_dir] = len(os.listdir(path))
     return counts
 
-# --- AI LOGIC ---
-def process_and_classify(image_path):
-    if not os.path.exists(app.config['MODEL_PATH']): return None, None
+# --- AI THREADED TRAINING ENGINE ---
+def run_training_task(app_context, categories):
+    global training_info
     try:
-        K.clear_session()
-        model = tf.keras.models.load_model(app.config['MODEL_PATH'])
-        img = cv2.resize(cv2.imread(image_path), (150, 150))
-        img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
-        res = model.predict(img)
-        idx = np.argmax(res)
-        all_cats = Category.query.order_by(Category.id).all()
-        K.clear_session()
-        if idx < len(all_cats): return all_cats[idx].name, all_cats[idx].severity
-    except: pass
-    return None, None
+        with app_context:
+            training_info["status"] = "Processing Data..."
+            K.clear_session()
+            X, y = [], []
+            for i, cat in enumerate(categories):
+                cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
+                if not os.path.exists(cat_path): continue
+                for img_name in os.listdir(cat_path):
+                    img = cv2.imread(os.path.join(cat_path, img_name))
+                    if img is not None:
+                        X.append(cv2.resize(img, (150, 150)))
+                        y.append(i)
+
+            if len(X) < 2:
+                training_info["status"] = "Error: Not enough data"
+                return
+
+            X = np.array(X).astype('float32') / 255.0
+            y = np.array(y)
+
+            training_info["status"] = "Fitting Neural Network..."
+            model = tf.keras.models.Sequential([
+                tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(150, 150, 3)),
+                tf.keras.layers.MaxPooling2D(2,2),
+                tf.keras.layers.Flatten(),
+                tf.keras.layers.Dense(32, activation='relu'),
+                tf.keras.layers.Dense(len(categories), activation='softmax')
+            ])
+            model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+            
+            # epochs set to 5 for faster training on limited resources
+            model.fit(X, y, epochs=5, batch_size=4, verbose=0)
+            model.save(app.config['MODEL_PATH'])
+            
+            K.clear_session()
+            training_info["status"] = "Success"
+            training_info["last_run"] = datetime.datetime.now().strftime("%I:%M %p")
+    except Exception as e:
+        training_info["status"] = f"Failed: {str(e)}"
 
 # --- ADMIN API ---
+@app.route('/api/admin/train-model', methods=['POST'])
+@login_required
+def train_model():
+    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
+    if training_info["status"] in ["Processing Data...", "Fitting Neural Network..."]:
+        return jsonify({"status": "busy", "message": "Training already in progress."})
+    
+    categories = Category.query.order_by(Category.id).all()
+    # Start background thread
+    thread = threading.Thread(target=run_training_task, args=(app.app_context(), categories))
+    thread.start()
+    return jsonify({"status": "started", "message": "Training started in background."})
+
+@app.route('/api/admin/train-status')
+@login_required
+def train_status():
+    return jsonify(training_info)
+
 @app.route('/api/admin/add-category', methods=['POST'])
 @login_required
 def add_category():
@@ -128,62 +178,27 @@ def get_gallery(category_name):
 def delete_training_image():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
     data = request.json
-    cat_name = data.get('category')
-    filename = data.get('filename')
-    file_path = os.path.join(app.config['TRAIN_FOLDER'], cat_name, filename)
-    
+    file_path = os.path.join(app.config['TRAIN_FOLDER'], data.get('category'), data.get('filename'))
     if os.path.exists(file_path):
         os.remove(file_path)
-        return jsonify({"status": "success", "message": "Image deleted."})
-    return jsonify({"status": "error", "message": "File not found."}), 404
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error"}), 404
 
-@app.route('/api/admin/train-model', methods=['POST'])
-@login_required
-def train_model():
-    if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
-    K.clear_session()
-    categories = Category.query.order_by(Category.id).all()
-    X, y = [], []
-    for i, cat in enumerate(categories):
-        cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
-        if not os.path.exists(cat_path): continue
-        for img_name in os.listdir(cat_path):
-            img = cv2.imread(os.path.join(cat_path, img_name))
-            if img is not None:
-                X.append(cv2.resize(img, (150, 150)))
-                y.append(i)
-    if len(X) < 2: return jsonify({"status": "error", "message": "Need more data."}), 400
-    X = np.array(X).astype('float32') / 255.0
-    y = np.array(y)
-    model = tf.keras.models.Sequential([
-        tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(150, 150, 3)),
-        tf.keras.layers.MaxPooling2D(2,2),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(32, activation='relu'),
-        tf.keras.layers.Dense(len(categories), activation='softmax')
-    ])
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-    model.fit(X, y, epochs=10, batch_size=4, verbose=0)
-    model.save(app.config['MODEL_PATH'])
-    K.clear_session()
-    return jsonify({"status": "success", "message": "Model Published!"})
-
-# --- PAGE ROUTES ---
-@app.route('/')
-@login_required
-def index(): return render_template('index.html', categories=Category.query.all())
-
-@app.route('/reports')
-@login_required
-def reports():
-    if current_user.role == 'Resident': return redirect(url_for('index'))
-    return render_template('reports.html', incidents=Incident.query.order_by(Incident.created_at.desc()).all())
-
-@app.route('/cnn-admin')
-@login_required
-def cnn_admin():
-    if current_user.role != 'Admin': return redirect(url_for('index'))
-    return render_template('cnn_admin.html', categories=Category.query.all(), counts=get_dataset_counts())
+# --- RESIDENT ACTIONS ---
+def process_and_classify(image_path):
+    if not os.path.exists(app.config['MODEL_PATH']): return None, None
+    try:
+        K.clear_session()
+        model = tf.keras.models.load_model(app.config['MODEL_PATH'])
+        img = cv2.resize(cv2.imread(image_path), (150, 150))
+        img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
+        res = model.predict(img)
+        idx = np.argmax(res)
+        all_cats = Category.query.order_by(Category.id).all()
+        K.clear_session()
+        if idx < len(all_cats): return all_cats[idx].name, all_cats[idx].severity
+    except: pass
+    return None, None
 
 @app.route('/api/report', methods=['POST'])
 @login_required
@@ -206,6 +221,23 @@ def create_report():
     db.session.add(new_inc); db.session.commit()
     return jsonify({"status": "success", "classified_as": final_type})
 
+# --- PAGE ROUTES ---
+@app.route('/')
+@login_required
+def index(): return render_template('index.html', categories=Category.query.all())
+
+@app.route('/reports')
+@login_required
+def reports():
+    if current_user.role == 'Resident': return redirect(url_for('index'))
+    return render_template('reports.html', incidents=Incident.query.order_by(Incident.created_at.desc()).all())
+
+@app.route('/cnn-admin')
+@login_required
+def cnn_admin():
+    if current_user.role != 'Admin': return redirect(url_for('index'))
+    return render_template('cnn_admin.html', categories=Category.query.all(), counts=get_dataset_counts())
+
 # --- AUTH ---
 @app.route('/login')
 def login_page(): return render_template('login.html')
@@ -226,15 +258,6 @@ def login():
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
-
-@app.route('/reset-db')
-def reset_db():
-    db.session.remove(); db.drop_all(); db.create_all()
-    for n, s in [('Theft','Medium'), ('Fire','Critical')]:
-        db.session.add(Category(name=n, severity=s))
-        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], n), exist_ok=True)
-    db.session.commit()
-    return "Reset Done"
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
