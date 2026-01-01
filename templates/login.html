@@ -26,6 +26,7 @@
             <input type="password" name="password" class="form-control mb-3" placeholder="Choose Password" required>
             <select name="role" class="form-select mb-3" required>
                 <option value="Resident">Resident</option>
+                <option value="Official">Barangay Official</option>
                 <option value="Police">Police Officer</option>
                 <option value="Admin">Admin</option>
             </select>
@@ -42,18 +43,12 @@
             title.innerText = title.innerText === 'SafeCity Login' ? 'SafeCity Register' : 'SafeCity Login';
         }
 
-        // Fix for 400 Error: Ensure all fields are captured
         document.getElementById('registerForm').onsubmit = async (e) => {
             e.preventDefault();
-            const formData = new FormData(e.target);
-            const res = await fetch('/api/register', { method: 'POST', body: formData });
-            if(res.ok) {
-                alert("Account created! Please login.");
-                toggleForm();
-            } else {
-                const data = await res.json();
-                alert("Error: " + (data.message || "Registration Failed"));
-            }
+            const res = await fetch('/api/register', { method: 'POST', body: new FormData(e.target) });
+            const data = await res.json();
+            if(res.ok) { alert("Account created! Please login."); toggleForm(); }
+            else { alert(data.message); }
         };
 
         document.getElementById('loginForm').onsubmit = async (e) => {
