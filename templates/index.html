@@ -16,16 +16,13 @@
     <div class="sidebar">
         <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
         <a href="/" class="active">Map Dashboard</a>
-        {% if current_user.role != 'Resident' %}
-            <a href="/reports">Incident Reports</a>
-        {% endif %}
-        {% if current_user.role in ['Admin', 'Police', 'Official'] %}
-            <a href="/heatmap">Crime Heatmap</a>
-        {% endif %}
+        {% if current_user.role != 'Resident' %}<a href="/reports">Incident Reports</a>{% endif %}
+        {% if current_user.role in ['Admin', 'Police', 'Official'] %}<a href="/heatmap">Crime Heatmap</a>{% endif %}
         {% if current_user.role == 'Admin' %}
             <a href="/cnn-admin">CNN Management</a>
+            <a href="/ai-testing">AI Sandbox (Test)</a>
         {% endif %}
-        <a href="/logout" class="text-danger mt-5">Sign Out</a>
+        <a href="/logout" class="text-danger mt-5 p-3">Sign Out</a>
     </div>
 
     <div class="main-content">
@@ -63,9 +60,9 @@
 
         document.getElementById('incidentForm').onsubmit = async (e) => {
             e.preventDefault();
-            if(!document.getElementById('lat').value) { alert("Pin location first!"); return; }
+            if(!document.getElementById('lat').value) return alert("Pin location!");
             const res = await fetch('/api/report', { method: 'POST', body: new FormData(e.target) });
-            if(res.ok) { alert("Reported successfully!"); location.reload(); }
+            if(res.ok) location.reload();
         };
     </script>
 </body>
