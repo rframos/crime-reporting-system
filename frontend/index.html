@@ -1,79 +1,103 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Crime Reporting System</title>
-  <link rel="stylesheet" href="style.css">
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Crime Reporting & Heatmap</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        /* Quick layout fixes to ensure the map is visible */
+        #map {
+            height: 500px;
+            width: 100%;
+            border-radius: 8px;
+            margin-top: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .report-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: 600; margin-bottom: 5px; }
+        input, textarea, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
 </head>
 <body>
-  <!-- Main Menu -->
-  <nav>
-    <a href="#" onclick="showPage('login')">Login</a>
-    <a href="#" onclick="showPage('news')">News</a>
-    <a href="#" onclick="showPage('about')">About</a>
-    <a href="#" onclick="showPage('contacts')">Contacts</a>
-  </nav>
 
-  <div class="container">
-    <!-- Login Page -->
-    <div id="login" class="hidden">
-      <h2>Login</h2>
-      <label>Select Account Type:</label>
-      <select id="role" onchange="showDashboard()">
-        <option value="">--Choose--</option>
-        <option value="admin">Admin</option>
-        <option value="resident">Resident</option>
-        <option value="barangay">Barangay Official</option>
-        <option value="police">Police Official</option>
-      </select>
+    <div class="container">
+        <header>
+            <h1>Web-Based Incident Reporting System</h1>
+            <p>Empowering communities through AI-driven crime analysis.</p>
+        </header>
+
+        <hr>
+
+        <div class="grid">
+            <section class="report-form">
+                <h2>Report an Incident</h2>
+                <form id="incidentForm" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="type">Incident Type (Manual Selection)</label>
+                        <select id="type" name="type" required>
+                            <option value="Theft">Theft</option>
+                            <option value="Vandalism">Vandalism</option>
+                            <option value="Assault">Assault</option>
+                            <option value="Accident">Accident</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <small>Note: AI will verify this if an image is uploaded.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" name="description" rows="3" required placeholder="Describe what happened..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Location (Click on the map to set coordinates)</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="lat" name="lat" readonly placeholder="Latitude" required>
+                            <input type="text" id="lng" name="lng" readonly placeholder="Longitude" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="image">Upload Image (For CNN Analysis)</label>
+                        <input type="file" id="image" name="image" accept="image/*">
+                    </div>
+
+                    <button type="submit" id="submitBtn">Submit Report</button>
+                </form>
+            </section>
+
+            <section class="map-section">
+                <h2>Crime Hotspots Heat Map</h2>
+                <div id="map"></div>
+            </section>
+        </div>
     </div>
 
-    <!-- Dashboards -->
-    <div id="dashboard-admin" class="hidden">
-      <h2>Admin Dashboard</h2>
-      <ul>
-        <li>Register/Update Account</li>
-        <li>CNN Model</li>
-        <li>Create Incident Database</li>
-        <li>Generate Reports</li>
-        <li>Heat Map Visualization</li>
-      </ul>
-      <div id="map"></div>
-    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/heatmap.js/2.0.2/heatmap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-heatmap@1.0.0/leaflet-heatmap.js"></script>
 
-    <div id="dashboard-resident" class="hidden">
-      <h2>Resident Dashboard</h2>
-      <ul>
-        <li>Register/Update Account</li>
-        <li>Report Incident</li>
-      </ul>
-    </div>
+    <script src="{{ url_for('static', filename='apps.js') }}"></script>
 
-    <div id="dashboard-barangay" class="hidden">
-      <h2>Barangay Official Dashboard</h2>
-      <ul>
-        <li>Register/Update Account</li>
-        <li>Respond to Incident</li>
-        <li>View Heat Map</li>
-      </ul>
-      <div id="map"></div>
-    </div>
-
-    <div id="dashboard-police" class="hidden">
-      <h2>Police Official Dashboard</h2>
-      <ul>
-        <li>Register/Update Account</li>
-        <li>Respond to Incident</li>
-        <li>View Heat Map</li>
-      </ul>
-      <div id="map"></div>
-    </div>
-  </div>
-
-  <!-- Leaflet + Heatmap.js -->
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
-  <script src="app.js"></script>
 </body>
 </html>
