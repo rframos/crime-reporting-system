@@ -35,22 +35,11 @@ class Incident(db.Model):
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
     status = db.Column(db.String(20), default='Pending')
-    confidence = db.Column(db.Float, default=0.0) 
-    image_url = db.Column(db.String(255), nullable=True)
+    severity = db.Column(db.String(20), default='Low') # Added for better filtering
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
-
-def roles_required(*roles):
-    def decorator(f):
-        @wraps(f)
-        @login_required
-        def decorated_function(*args, **kwargs):
-            if current_user.role not in roles: return abort(403)
-            return f(*args, **kwargs)
-        return decorated_function
-    return decorator
 
 # --- ROUTES ---
 @app.route('/')
@@ -60,33 +49,27 @@ def index():
 
 @app.route('/heatmap')
 @login_required
-def heatmap():
-    return render_template('heatmap.html')
-
-@app.route('/reports')
-@login_required
-def reports():
-    incidents = Incident.query.order_by(Incident.created_at.desc()).all()
-    return render_template('reports.html', incidents=incidents)
-
-@app.route('/contacts')
-@login_required
-def contacts():
-    return render_template('contacts.html')
-
-@app.route('/reset-db')
-def reset_db():
-    db.drop_all()
-    db.create_all()
-    db.session.add(Category(name="Theft", severity="Medium"))
-    db.session.commit()
-    return "Database Reset Successfully."
+def heatmap_page():
+    # Pass categories to the heatmap for the filter dropdown
+    return render_template('heatmap.html', categories=Category.query.all())
 
 @app.route('/api/incidents')
+@login_required
 def get_incidents():
-    incidents = Incident.query.all()
-    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type} for i in incidents])
+    # Supports ?type=Theft or ?severity=High
+    inc_type = request.args.get('type')
+    severity = request.args.get('severity')
+    
+    query = Incident.query
+    if inc_type and inc_type != 'All':
+        query = query.filter_by(incident_type=inc_type)
+    if severity and severity != 'All':
+        query = query.filter_by(severity=severity)
+        
+    incidents = query.all()
+    return jsonify([{"lat": i.latitude, "lng": i.longitude, "type": i.incident_type, "severity": i.severity} for i in incidents])
 
+# (Login/Register/Logout routes remain the same)
 @app.route('/login')
 def login_page(): return render_template('login.html')
 
@@ -95,9 +78,7 @@ def register_page(): return render_template('register.html')
 
 @app.route('/api/register', methods=['POST'])
 def register():
-    uname = request.form.get('username')
-    passw = request.form.get('password')
-    role = request.form.get('role')
+    uname = request.form.get('username'); passw = request.form.get('password'); role = request.form.get('role')
     if User.query.filter_by(username=uname).first(): return "User exists", 400
     db.session.add(User(username=uname, password=generate_password_hash(passw), role=role))
     db.session.commit()
@@ -107,8 +88,7 @@ def register():
 def login():
     user = User.query.filter_by(username=request.form.get('username')).first()
     if user and check_password_hash(user.password, request.form.get('password')):
-        login_user(user)
-        return jsonify({"status": "success"})
+        login_user(user); return jsonify({"status": "success"})
     return "Error", 401
 
 @app.route('/logout')
