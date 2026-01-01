@@ -3,7 +3,7 @@ import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
-# This finds the absolute path of the 'crime-reporting-system' folder
+# Identify the root directory (one level up from /backend)
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 app = Flask(__name__, 
@@ -11,7 +11,7 @@ app = Flask(__name__,
             template_folder='templates',
             static_folder='static')
 
-# DATABASE CONFIG
+# DATABASE CONFIGURATION
 uri = os.environ.get('DATABASE_URL')
 if uri and uri.startswith("postgres://"):
     uri = uri.replace("postgres://", "postgresql://", 1)
@@ -21,6 +21,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+# INCIDENT MODEL
 class Incident(db.Model):
     __tablename__ = 'incidents'
     id = db.Column(db.Integer, primary_key=True)
@@ -30,6 +31,7 @@ class Incident(db.Model):
     longitude = db.Column(db.Float)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
+# ROUTES
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -37,17 +39,31 @@ def index():
 @app.route('/api/report', methods=['POST'])
 def create_report():
     try:
-        # Get data from form
+        # Check if data is coming from a form or JSON
+        data = request.form if request.form else request.get_json()
+        
+        # Log data to Render Console for debugging
+        print(f"--- Incoming Report ---")
+        print(f"Type: {data.get('type')}")
+        print(f"Lat: {data.get('lat')}, Lng: {data.get('lng')}")
+
+        # Validate that we have all required fields
+        if not all([data.get('type'), data.get('lat'), data.get('lng')]):
+            return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
         new_incident = Incident(
-            incident_type=request.form.get('type'),
-            description=request.form.get('description'),
-            latitude=float(request.form.get('lat')),
-            longitude=float(request.form.get('lng'))
+            incident_type=data.get('type'),
+            description=data.get('description', ''),
+            latitude=float(data.get('lat')),
+            longitude=float(data.get('lng'))
         )
+        
         db.session.add(new_incident)
         db.session.commit()
         return jsonify({"status": "success", "message": "Reported!"}), 201
+    
     except Exception as e:
+        print(f"DB Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
 
 if __name__ == '__main__':
