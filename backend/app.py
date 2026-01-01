@@ -9,7 +9,9 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import text
+from tensorflow.keras import backend as K
 
+# --- DIRECTORY SETUP ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
 
@@ -58,40 +60,55 @@ class Incident(db.Model):
 @login_manager.user_loader
 def load_user(user_id): return User.query.get(int(user_id))
 
-# --- CNN TRAINING ENGINE ---
+# --- AI LOGIC (CLASSIFICATION & TRAINING) ---
+
+def process_and_classify(image_path):
+    """Used by Residents to classify photos based on the Admin's trained model."""
+    if not os.path.exists(app.config['MODEL_PATH']): return None, None
+    try:
+        K.clear_session()
+        model = tf.keras.models.load_model(app.config['MODEL_PATH'])
+        img = cv2.imread(image_path)
+        img = cv2.resize(img, (150, 150))
+        img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
+        res = model.predict(img)
+        idx = np.argmax(res)
+        all_cats = Category.query.order_by(Category.id).all()
+        K.clear_session()
+        if idx < len(all_cats): return all_cats[idx].name, all_cats[idx].severity
+    except: pass
+    return None, None
+
+# --- ADMIN API ENDPOINTS ---
 
 @app.route('/api/admin/add-category', methods=['POST'])
 @login_required
 def add_category():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
-    name = request.form.get('name')
-    sev = request.form.get('severity')
+    name, sev = request.form.get('name'), request.form.get('severity')
     if not Category.query.filter_by(name=name).first():
         db.session.add(Category(name=name, severity=sev))
         db.session.commit()
-        # Create folder for training images
         os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], name), exist_ok=True)
     return redirect(url_for('cnn_admin'))
 
 @app.route('/api/admin/upload-training', methods=['POST'])
 @login_required
-def upload_training_images():
+def upload_training():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
-    category_name = request.form.get('category')
+    cat_name = request.form.get('category')
     files = request.files.getlist('images')
-    
-    cat_path = os.path.join(app.config['TRAIN_FOLDER'], category_name)
-    for file in files:
-        if file:
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(cat_path, filename))
-            
-    return jsonify({"status": "success", "message": f"Uploaded {len(files)} images to {category_name}"})
+    for f in files:
+        if f: f.save(os.path.join(app.config['TRAIN_FOLDER'], cat_name, secure_filename(f.filename)))
+    return jsonify({"status": "success", "message": f"Added {len(files)} samples to {cat_name}."})
 
 @app.route('/api/admin/train-model', methods=['POST'])
 @login_required
 def train_model():
     if current_user.role != 'Admin': return jsonify({"status": "error"}), 403
+    
+    # Memory Management: Clear before starting
+    K.clear_session()
     
     categories = Category.query.order_by(Category.id).all()
     X, y = [], []
@@ -99,46 +116,49 @@ def train_model():
     for i, cat in enumerate(categories):
         cat_path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
         if not os.path.exists(cat_path): continue
-        
         for img_name in os.listdir(cat_path):
-            img_p = os.path.join(cat_path, img_name)
-            img = cv2.imread(img_p)
+            img = cv2.imread(os.path.join(cat_path, img_name))
             if img is not None:
-                img = cv2.resize(img, (150, 150))
-                X.append(img)
+                X.append(cv2.resize(img, (150, 150)))
                 y.append(i)
 
-    if len(X) < 1: return jsonify({"status": "error", "message": "No training images found."}), 400
+    if len(X) < 2: return jsonify({"status": "error", "message": "Need at least 2 categories with images."}), 400
 
     X = np.array(X).astype('float32') / 255.0
     y = np.array(y)
 
+    # Lightweight Model Architecture to prevent Cloud OOM/Kills
     model = tf.keras.models.Sequential([
-        tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(150, 150, 3)),
-        tf.keras.layers.MaxPooling2D(2,2),
-        tf.keras.layers.Conv2D(64, (3,3), activation='relu'),
+        tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(150, 150, 3)),
         tf.keras.layers.MaxPooling2D(2,2),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(128, activation='relu'),
+        tf.keras.layers.Dense(32, activation='relu'),
         tf.keras.layers.Dense(len(categories), activation='softmax')
     ])
+    
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-    model.fit(X, y, epochs=10) # 10 epochs for better learning
+    
+    # Small batch size to save RAM
+    model.fit(X, y, epochs=10, batch_size=4, verbose=0)
     model.save(app.config['MODEL_PATH'])
     
-    return jsonify({"status": "success", "message": "CNN Trained Successfully!"})
+    # Cleanup Memory
+    K.clear_session()
+    del X, y, model
+    
+    return jsonify({"status": "success", "message": "Model trained and deployed!"})
 
-# Classification logic (same as previous)
-def process_and_classify(image_path):
-    if not os.path.exists(app.config['MODEL_PATH']): return None, None
-    try:
-        model = tf.keras.models.load_model(app.config['MODEL_PATH'])
-        img = cv2.resize(cv2.imread(image_path), (150, 150))
-        img = np.expand_dims(img.astype('float32') / 255.0, axis=0)
-        idx = np.argmax(model.predict(img))
-        cats = Category.query.order_by(Category.id).all()
-        return (cats[idx].name, cats[idx].severity) if idx < len(cats) else (None, None)
-    except: return None, None
+# --- GENERAL ROUTES ---
+
+@app.route('/')
+@login_required
+def index(): return render_template('index.html', categories=Category.query.all())
+
+@app.route('/reports')
+@login_required
+def reports():
+    if current_user.role == 'Resident': return redirect(url_for('index'))
+    return render_template('reports.html', incidents=Incident.query.order_by(Incident.created_at.desc()).all())
 
 @app.route('/cnn-admin')
 @login_required
@@ -146,7 +166,60 @@ def cnn_admin():
     if current_user.role != 'Admin': return redirect(url_for('index'))
     return render_template('cnn_admin.html', categories=Category.query.all())
 
-# Auth/Reset routes...
+@app.route('/api/report', methods=['POST'])
+@login_required
+def create_report():
+    img = request.files.get('image')
+    lat, lng = request.form.get('lat'), request.form.get('lng')
+    final_type = request.form.get('type')
+    cat = Category.query.filter_by(name=final_type).first()
+    final_sev = cat.severity if cat else "Low"
+    filename = None
+    
+    if img:
+        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{img.filename}")
+        path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        img.save(path)
+        ai_t, ai_s = process_and_classify(path)
+        if ai_t: final_type, final_sev = ai_t, ai_s
+
+    new_inc = Incident(incident_type=final_type, description=request.form.get('description'),
+                       latitude=float(lat), longitude=float(lng), image_url=filename,
+                       severity=final_sev, user_id=current_user.id)
+    db.session.add(new_inc); db.session.commit()
+    return jsonify({"status": "success", "classified_as": final_type})
+
+# --- AUTH ---
+
+@app.route('/login')
+def login_page(): return render_template('login.html')
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    hashed = generate_password_hash(request.form.get('password'))
+    user = User(username=request.form.get('username'), password=hashed, role=request.form.get('role'))
+    db.session.add(user); db.session.commit()
+    return jsonify({"status": "success"})
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    user = User.query.filter_by(username=request.form.get('username')).first()
+    if user and check_password_hash(user.password, request.form.get('password')):
+        login_user(user); return jsonify({"status": "success"})
+    return jsonify({"status": "error"}), 401
+
+@app.route('/logout')
+def logout(): logout_user(); return redirect(url_for('login_page'))
+
+@app.route('/reset-db')
+def reset_db():
+    db.session.remove(); db.drop_all(); db.create_all()
+    for n, s in [('Theft','Medium'), ('Fire','Critical')]:
+        db.session.add(Category(name=n, severity=s))
+        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], n), exist_ok=True)
+    db.session.commit()
+    return "Database Reset Success"
+
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
     app.run(debug=True)
