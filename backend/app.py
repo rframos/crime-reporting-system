@@ -5,7 +5,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# Setup directories
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 app = Flask(__name__, 
@@ -40,7 +39,7 @@ class Incident(db.Model):
     description = db.Column(db.Text)
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
-    status = db.Column(db.String(20), default='Pending')
+    status = db.Column(db.String(20), default='Pending') # Pending, Responded, Closed
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
@@ -48,25 +47,58 @@ class Incident(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- AUTH ROUTES ---
+# --- ROUTES ---
+
+@app.route('/')
+@login_required
+def index():
+    return render_template('index.html')
+
+@app.route('/login')
+def login_page():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    return render_template('login.html')
+
+@app.route('/heatmap')
+@login_required
+def heatmap():
+    if current_user.role not in ['Police', 'Admin']:
+        return "Access Denied", 403
+    return render_template('heatmap.html')
+
+@app.route('/reports')
+@login_required
+def reports():
+    if current_user.role == 'Resident':
+        return "Access Denied", 403
+    incidents = Incident.query.all()
+    return render_template('reports.html', incidents=incidents)
+
+@app.route('/contacts')
+@login_required
+def contacts():
+    return render_template('contacts.html')
+
+@app.route('/cnn-admin')
+@login_required
+def cnn_admin():
+    if current_user.role != 'Admin':
+        return "Access Denied", 403
+    return render_template('cnn_admin.html')
+
+# --- API ROUTES ---
+
 @app.route('/api/register', methods=['POST'])
 def register():
-    try:
-        data = request.form
-        if User.query.filter_by(username=data.get('username')).first():
-            return jsonify({"status": "error", "message": "User already exists"}), 400
-        
-        hashed_pw = generate_password_hash(data.get('password'))
-        new_user = User(
-            username=data.get('username'),
-            password=hashed_pw,
-            role=data.get('role', 'Resident')
-        )
-        db.session.add(new_user)
-        db.session.commit()
-        return jsonify({"status": "success", "message": "Registered! You can now login."})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+    data = request.form
+    if User.query.filter_by(username=data.get('username')).first():
+        return jsonify({"status": "error", "message": "User already exists"}), 400
+    hashed_pw = generate_password_hash(data.get('password'))
+    new_user = User(username=data.get('username'), password=hashed_pw, role=data.get('role', 'Resident'))
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({"status": "success"})
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -74,21 +106,16 @@ def login():
     user = User.query.filter_by(username=data.get('username')).first()
     if user and check_password_hash(user.password, data.get('password')):
         login_user(user)
-        return jsonify({"status": "success", "role": user.role})
+        return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
 @app.route('/logout')
-@login_required
 def logout():
     logout_user()
-    return redirect(url_for('index'))
-
-# --- APP ROUTES ---
-@app.route('/')
-def index():
-    return render_template('index.html')
+    return redirect(url_for('login_page'))
 
 @app.route('/api/incidents', methods=['GET'])
+@login_required
 def get_incidents():
     incidents = Incident.query.all()
     return jsonify([{
@@ -100,26 +127,23 @@ def get_incidents():
 @app.route('/api/report', methods=['POST'])
 @login_required
 def create_report():
-    try:
-        data = request.form
-        new_incident = Incident(
-            incident_type=data.get('type'),
-            description=data.get('description', ''),
-            latitude=float(data.get('lat')),
-            longitude=float(data.get('lng')),
-            user_id=current_user.id
-        )
-        db.session.add(new_incident)
-        db.session.commit()
-        return jsonify({"status": "success"}), 201
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+    data = request.form
+    new_incident = Incident(
+        incident_type=data.get('type'),
+        description=data.get('description', ''),
+        latitude=float(data.get('lat')),
+        longitude=float(data.get('lng')),
+        user_id=current_user.id
+    )
+    db.session.add(new_incident)
+    db.session.commit()
+    return jsonify({"status": "success"})
 
 @app.route('/reset-db')
 def reset_db():
     db.drop_all()
     db.create_all()
-    return "Database updated with User authentication!"
+    return "Database Reset Successful!"
 
 if __name__ == '__main__':
     with app.app_context():
