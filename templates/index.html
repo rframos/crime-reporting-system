@@ -2,95 +2,50 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SafeCity SJDM | Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .sidebar { height: 100vh; background: #212529; color: white; padding-top: 20px; position: fixed; width: 250px; }
-        .sidebar a { color: #adb5bd; text-decoration: none; padding: 10px 20px; display: block; transition: 0.3s; }
-        .sidebar a:hover { background: #343a40; color: white; }
-        .sidebar .active { background: #0d6efd; color: white; }
+        .sidebar a { color: #adb5bd; text-decoration: none; padding: 10px 20px; display: block; }
         .main-content { margin-left: 250px; padding: 20px; }
-        #map { height: 500px; width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .card { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        #map { height: 500px; width: 100%; border-radius: 12px; }
     </style>
 </head>
 <body>
-
     <div class="sidebar">
         <h4 class="text-center mb-4">SafeCity SJDM</h4>
-        <a href="/" class="active">Map Dashboard</a>
-        
-        {% if current_user.role in ['Admin', 'Official', 'Police'] %}
-        <a href="/reports">Incident Reports</a>
-        {% endif %}
-
-        {% if current_user.role in ['Police', 'Admin'] %}
-        <a href="/heatmap">Crime Heatmap</a>
-        {% endif %}
-
-        {% if current_user.role in ['Official', 'Resident'] %}
+        <a href="/" class="bg-primary text-white">Map Dashboard</a>
+        {% if current_user.role != 'Resident' %}<a href="/reports">Incident Reports</a>{% endif %}
+        {% if current_user.role in ['Police', 'Admin'] %}<a href="/heatmap">Crime Heatmap</a>{% endif %}
         <a href="/contacts">Emergency Contacts</a>
-        {% endif %}
-
-        {% if current_user.role == 'Admin' %}
-        <a href="/cnn-admin">CNN Model Training</a>
-        {% endif %}
-
+        {% if current_user.role == 'Admin' %}<a href="/cnn-admin">CNN Model Training</a>{% endif %}
         <hr>
-        <div class="px-3 small text-muted">User: {{ current_user.username }} ({{ current_user.role }})</div>
-        <a href="/logout" class="text-danger mt-3">Logout</a>
+        <div class="px-3 small text-info">Logged in as: <b>{{ current_user.username }}</b> ({{ current_user.role }})</div>
+        <a href="/logout" class="text-danger mt-2">Logout</a>
     </div>
 
     <div class="main-content">
-        <div class="container-fluid">
-            <div class="row mb-4">
-                <div class="col">
-                    <h2 class="fw-bold">SJDM Crime Monitoring</h2>
-                    <p class="text-muted">Real-time data for San Jose del Monte, Bulacan</p>
+        <div class="row">
+            <div class="col-lg-4">
+                <div class="card p-3 shadow-sm">
+                    <h5>Report Incident</h5>
+                    <form id="incidentForm">
+                        <select name="type" class="form-select mb-2" required>
+                            {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
+                        </select>
+                        <textarea name="description" class="form-control mb-2" placeholder="Details" required></textarea>
+                        <div class="input-group mb-2">
+                            <input type="text" id="lat" name="lat" class="form-control" readonly placeholder="Lat">
+                            <input type="text" id="lng" name="lng" class="form-control" readonly placeholder="Lng">
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Submit Report</button>
+                    </form>
                 </div>
             </div>
-
-            <div class="row">
-                <div class="col-lg-4">
-                    <div class="card p-4">
-                        <h5 class="mb-3">Report New Incident</h5>
-                        <form id="incidentForm">
-                            <div class="mb-3">
-                                <label class="form-label">Category</label>
-                                <select name="type" class="form-select">
-                                    <option value="Theft">Theft / Robbery</option>
-                                    <option value="Vandalism">Vandalism</option>
-                                    <option value="Physical Injury">Physical Injury</option>
-                                    <option value="Illegal Drugs">Illegal Drugs</option>
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Description</label>
-                                <textarea name="description" class="form-control" rows="3" placeholder="Provide details..."></textarea>
-                            </div>
-                            <div class="row g-2 mb-3">
-                                <div class="col">
-                                    <input type="text" id="lat" name="lat" class="form-control" readonly placeholder="Lat">
-                                </div>
-                                <div class="col">
-                                    <input type="text" id="lng" name="lng" class="form-control" readonly placeholder="Lng">
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100">Submit to Authorities</button>
-                        </form>
-                    </div>
-                </div>
-
-                <div class="col-lg-8">
-                    <div id="map"></div>
-                </div>
-            </div>
+            <div class="col-lg-8"><div id="map"></div></div>
         </div>
     </div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="/static/apps.js"></script>
 </body>
