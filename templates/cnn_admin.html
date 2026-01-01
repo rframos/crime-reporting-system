@@ -1,98 +1,187 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>CNN Training Center</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeCity SJDM | CNN Training Center</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .sidebar { height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; }
+        body { background: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .sidebar { height: 100vh; background: #2c3e50; color: white; padding: 20px 0; position: fixed; width: 260px; transition: all 0.3s; }
         .sidebar a { color: #bdc3c7; text-decoration: none; padding: 12px 25px; display: block; }
-        .sidebar a.active { background: #3498db; color: white; }
-        .main-content { margin-left: 260px; padding: 30px; }
-        .train-card { border-left: 5px solid #3498db; }
+        .sidebar a:hover { background: #34495e; color: white; }
+        .sidebar a.active { background: #3498db; color: white; border-left: 5px solid white; }
+        .main-content { margin-left: 260px; padding: 40px; }
+        .card { border: none; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        .step-header { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; color: #2c3e50; }
+        .counter-badge { font-size: 0.85rem; padding: 6px 12px; border-radius: 20px; }
+        #status-message { font-weight: bold; padding: 15px; border-radius: 8px; display: none; }
     </style>
 </head>
 <body>
+
     <div class="sidebar">
         <h4 class="text-center fw-bold mb-4">SafeCity SJDM</h4>
         <a href="/">Map Dashboard</a>
         <a href="/reports">Incident Reports</a>
         <a href="/cnn-admin" class="active">CNN Management</a>
-        <a href="/logout" class="text-danger mt-5">Sign Out</a>
+        <div class="mt-5 p-3">
+            <p class="small text-muted mb-1">Signed in as Admin</p>
+            <a href="/logout" class="text-danger p-0">Sign Out</a>
+        </div>
     </div>
 
     <div class="main-content">
-        <h2 class="fw-bold mb-4">CNN Model Training</h2>
+        <h2 class="fw-bold mb-1">CNN Intelligence Control</h2>
+        <p class="text-muted mb-4">Manage incident categories and train the AI model for automatic classification.</p>
 
-        <div class="card p-4 shadow-sm mb-4">
-            <h5 class="fw-bold">Step 1: Create Incident Category</h5>
-            <form action="/api/admin/add-category" method="POST" class="row g-3">
-                <div class="col-md-5">
-                    <input type="text" name="name" class="form-control" placeholder="Category Name (e.g. Fire)" required>
-                </div>
-                <div class="col-md-4">
-                    <select name="severity" class="form-select">
-                        <option value="Low">Low Severity</option>
-                        <option value="Medium">Medium Severity</option>
-                        <option value="High">High Severity</option>
-                        <option value="Critical">Critical Severity</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <button class="btn btn-dark w-100">Add Category</button>
-                </div>
-            </form>
-        </div>
+        <div id="status-message"></div>
 
-        <div class="card p-4 shadow-sm mb-4">
-            <h5 class="fw-bold">Step 2: Upload Training Images</h5>
-            <p class="text-muted small">Select a category and upload multiple images to train the model on that specific crime.</p>
-            <form id="uploadForm" class="row g-3">
-                <div class="col-md-5">
-                    <select id="trainCat" name="category" class="form-select">
-                        {% for cat in categories %}
-                        <option value="{{ cat.name }}">{{ cat.name }}</option>
-                        {% endfor %}
-                    </select>
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="card p-4">
+                    <h5 class="fw-bold step-header">Step 1: Define Incident Categories</h5>
+                    <form action="/api/admin/add-category" method="POST" class="row g-3">
+                        <div class="col-md-5">
+                            <label class="form-label small fw-bold">Category Name</label>
+                            <input type="text" name="name" class="form-control" placeholder="e.g., Illegal Parking" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Default Severity</label>
+                            <select name="severity" class="form-select">
+                                <option value="Low">Low</option>
+                                <option value="Medium">Medium</option>
+                                <option value="High">High</option>
+                                <option value="Critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-dark w-100">Add Category</button>
+                        </div>
+                    </form>
                 </div>
-                <div class="col-md-5">
-                    <input type="file" name="images" class="form-control" multiple required>
-                </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary w-100">Upload</button>
-                </div>
-            </form>
-        </div>
+            </div>
 
-        <div class="card p-4 shadow-sm train-card bg-light">
-            <h5 class="fw-bold text-primary">Step 3: Train & Publish CNN Model</h5>
-            <p>This will compile all uploaded images and build the <code>crime_model.h5</code> file used by residents.</p>
-            <button onclick="trainModel()" id="trainBtn" class="btn btn-success btn-lg fw-bold">START TRAINING NOW</button>
-            <div id="status" class="mt-3 fw-bold text-center"></div>
+            <div class="col-lg-6">
+                <div class="card p-4 h-100">
+                    <h5 class="fw-bold step-header">Step 2: Upload Training Images</h5>
+                    <p class="small text-muted">Select a category and upload at least 5-10 clear images of that specific incident type.</p>
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Select Category</label>
+                            <select name="category" class="form-select" required>
+                                {% for cat in categories %}
+                                <option value="{{ cat.name }}">{{ cat.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Choose Images</label>
+                            <input type="file" name="images" class="form-control" multiple required>
+                        </div>
+                        <button type="submit" id="uploadBtn" class="btn btn-primary w-100 fw-bold">Upload to Dataset</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card p-4 h-100">
+                    <h5 class="fw-bold step-header">Step 3: Dataset Status & Training</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Category</th>
+                                    <th class="text-center">Samples</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for cat in categories %}
+                                <tr>
+                                    <td>{{ cat.name }}</td>
+                                    <td class="text-center">
+                                        <span class="badge counter-badge {% if counts[cat.name] and counts[cat.name] > 0 %}bg-success{% else %}bg-danger{% endif %}">
+                                            {{ counts[cat.name] or 0 }} images
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <hr>
+                    <button onclick="trainModel()" id="trainBtn" class="btn btn-success btn-lg w-100 fw-bold">
+                        PUBLISH AI MODEL
+                    </button>
+                    <p class="text-center small text-muted mt-2">Note: This will overwrite the existing <code>crime_model.h5</code></p>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        // Handle Image Uploads
+        // Handle Multi-Image Upload
         document.getElementById('uploadForm').onsubmit = async (e) => {
             e.preventDefault();
-            const res = await fetch('/api/admin/upload-training', { method: 'POST', body: new FormData(e.target) });
-            const data = await res.json();
-            alert(data.message);
-            e.target.reset();
+            const btn = document.getElementById('uploadBtn');
+            const status = document.getElementById('status-message');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading...';
+
+            try {
+                const formData = new FormData(e.target);
+                const res = await fetch('/api/admin/upload-training', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    status.style.display = 'block';
+                    status.className = 'alert alert-success';
+                    status.innerText = data.message;
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (err) {
+                status.style.display = 'block';
+                status.className = 'alert alert-danger';
+                status.innerText = "Upload failed: " + err.message;
+                btn.disabled = false;
+                btn.innerText = 'Upload to Dataset';
+            }
         };
 
-        // Handle CNN Training
+        // Handle Training Trigger
         async function trainModel() {
             const btn = document.getElementById('trainBtn');
-            const status = document.getElementById('status');
+            const status = document.getElementById('status-message');
+
+            if (!confirm("Are you sure? Training will take a few minutes and users cannot report via AI during this time.")) return;
+
             btn.disabled = true;
-            status.innerText = "Neural Network Training in progress... Please wait.";
-            
-            const res = await fetch('/api/admin/train-model', { method: 'POST' });
-            const data = await res.json();
-            
-            status.innerText = data.message;
-            btn.disabled = false;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Training AI...';
+            status.style.display = 'block';
+            status.className = 'alert alert-info';
+            status.innerText = "Processing Neural Network training on the server. Please do not close this window.";
+
+            try {
+                const res = await fetch('/api/admin/train-model', { method: 'POST' });
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    status.className = 'alert alert-success';
+                    status.innerText = "Success! The new model has been deployed to all residents.";
+                    btn.innerText = 'MODEL PUBLISHED';
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (err) {
+                status.className = 'alert alert-danger';
+                status.innerText = "Training Failed: " + err.message;
+                btn.disabled = false;
+                btn.innerText = 'PUBLISH AI MODEL';
+            }
         }
     </script>
 </body>
