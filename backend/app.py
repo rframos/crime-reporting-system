@@ -51,7 +51,7 @@ class Incident(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- PAGE ROUTES ---
+# --- ROUTES ---
 @app.route('/')
 @login_required
 def index():
@@ -90,7 +90,6 @@ def cnn_admin():
     categories = Category.query.all()
     return render_template('cnn_admin.html', categories=categories)
 
-# --- API ROUTES ---
 @app.route('/api/incident/<int:id>/status', methods=['POST'])
 @login_required
 def update_status(id):
@@ -168,7 +167,7 @@ def reset_db():
     for n in ['Theft', 'Vandalism', 'Assault']:
         db.session.add(Category(name=n))
     db.session.commit()
-    return "Database Polished and Reset!"
+    return "Database Reset!"
 
 if __name__ == '__main__':
     with app.app_context():
