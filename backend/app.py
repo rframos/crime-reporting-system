@@ -32,7 +32,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20)) 
+    role = db.Column(db.String(20)) # Resident, Police Officer, Admin, Barangay Official
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -93,13 +93,11 @@ def index():
 @app.route('/heatmap')
 @login_required
 def heatmap():
-    # This renders templates/heatmap.html
     return render_template('heatmap.html')
 
 @app.route('/reports')
 @login_required
 def reports():
-    # This renders templates/reports.html
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
 
@@ -119,6 +117,14 @@ def login_page(): return render_template('login.html')
 @app.route('/register')
 def register_page(): return render_template('register.html')
 
+# --- API ROUTES ---
+@app.route('/api/incident-data')
+def incident_data():
+    """Returns coordinates for the heatmap."""
+    incidents = Incident.query.all()
+    data = [[inc.latitude, inc.longitude, 0.8] for inc in incidents if inc.latitude and inc.longitude]
+    return jsonify(data)
+
 @app.route('/api/login', methods=['POST'])
 def login():
     user = User.query.filter_by(username=request.form.get('username')).first()
@@ -131,6 +137,9 @@ def login():
 @app.route('/api/register', methods=['POST'])
 def register():
     u, p, r = request.form.get('username'), request.form.get('password'), request.form.get('role')
+    if User.query.filter_by(username=u).first():
+        flash("User already exists.", "danger")
+        return redirect(url_for('register_page'))
     db.session.add(User(username=u, password=generate_password_hash(p), role=r))
     db.session.commit()
     return redirect(url_for('login_page'))
