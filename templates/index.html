@@ -3,7 +3,7 @@
 <head>
     <title>SafeCity SJDM | Report</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>.main-content { margin-left: 260px; padding: 40px; } .report-card { border-radius: 20px; border: none; overflow: hidden; }</style>
+    <style>.main-content { margin-left: 260px; padding: 40px; } .report-card { border-radius: 20px; border: none; }</style>
 </head>
 <body class="bg-light">
     {% include 'sidebar.html' %}
@@ -19,7 +19,7 @@
         <div class="card report-card shadow-lg mx-auto" style="max-width: 600px;">
             <div class="bg-primary p-4 text-white text-center">
                 <h4 class="mb-0">Emergency Submission</h4>
-                <small>Upload a photo and AI will identify the incident.</small>
+                <small>Location and image will be sent to authorities.</small>
             </div>
             <div class="card-body p-4">
                 <form action="/api/incident/report" method="POST" enctype="multipart/form-data">
@@ -40,15 +40,15 @@
     </div>
 
     <script>
-        // Automatic Geolocation capture
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((pos) => {
                 document.getElementById('lat').value = pos.coords.latitude;
                 document.getElementById('lng').value = pos.coords.longitude;
-                document.getElementById('geo-status').innerHTML = "✅ Location captured!";
+                document.getElementById('geo-status').innerText = "✅ Location captured: " + pos.coords.latitude.toFixed(4) + ", " + pos.coords.longitude.toFixed(4);
                 document.getElementById('geo-status').className = "alert alert-success py-2 small";
-            }, () => {
-                document.getElementById('geo-status').innerHTML = "⚠️ Location access denied. Manual input needed.";
+            }, (err) => {
+                document.getElementById('geo-status').innerText = "⚠️ Location Error: " + err.message;
+                document.getElementById('geo-status').className = "alert alert-warning py-2 small";
             });
         }
     </script>
