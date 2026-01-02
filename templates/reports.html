@@ -13,20 +13,17 @@
 <body>
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <h2 class="fw-bold mb-4" style="color: var(--rose-pink);">Official Incident Logs</h2>
+        <h2 class="fw-bold mb-4" style="color: var(--rose-pink);">📋 Incident Reports</h2>
         <div class="card p-4 shadow-sm">
             <table class="table align-middle">
-                <thead>
-                    <tr><th>Date</th><th>Incident Type</th><th>Evidence</th><th>Status</th></tr>
-                </thead>
+                <thead><tr><th>Date</th><th>Type</th><th>Evidence</th><th>Status</th></tr></thead>
                 <tbody>
                     {% for i in incidents %}
                     <tr>
                         <td class="small">{{ i.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                        <td><span class="fw-bold">{{ i.incident_type }}</span></td>
+                        <td class="fw-bold">{{ i.incident_type }}</td>
                         <td>
-                            {% if i.image_url %}
-                            <img src="/static/uploads/{{ i.image_url }}" style="width: 60px; border-radius: 8px; cursor: zoom-in;" onclick="window.open(this.src)">
+                            {% if i.image_url %}<img src="/static/uploads/{{ i.image_url }}" style="width: 50px; border-radius: 5px; cursor: pointer;" onclick="window.open(this.src)">
                             {% else %}<span class="text-muted small">No Image</span>{% endif %}
                         </td>
                         <td><span class="badge" style="background-color: var(--rose-pink);">{{ i.status }}</span></td>
