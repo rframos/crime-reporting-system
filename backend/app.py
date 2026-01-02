@@ -1,22 +1,32 @@
 import os
 import datetime
 import shutil
-import traceback
 from functools import wraps
 from flask import Flask, render_template, request, jsonify, redirect, url_for, abort, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 from PIL import Image
 
 # --- CONFIGURATION ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
 
-app.config['SECRET_KEY'] = 'sjdm_safe_city_2026_full_fix'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(base_dir, 'local.db')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'sjdm_safe_city_2026_secure')
+
+# --- WEB DATABASE CONNECTION LOGIC ---
+# Detects DATABASE_URL from the environment (Render, Heroku, etc.)
+db_url = os.environ.get('DATABASE_URL')
+
+# Fix for Render: SQLAlchemy requires 'postgresql://' but Render provides 'postgres://'
+if db_url and db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+# Default to local sqlite ONLY if no web database URL is found
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url or 'sqlite:///' + os.path.join(base_dir, 'local.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Image Storage Paths
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['TRAIN_FOLDER'] = os.path.join(base_dir, 'static/training_data')
 
@@ -51,7 +61,10 @@ class Incident(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    try:
+        return User.query.get(int(user_id))
+    except:
+        return None
 
 def roles_required(*roles):
     def decorator(f):
@@ -63,28 +76,36 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- THE RESET ROUTE ---
+# --- DATABASE MANAGEMENT ---
 @app.route('/reset-db')
 def reset_db():
-    db.drop_all()
-    db.create_all()
-    if os.path.exists(app.config['TRAIN_FOLDER']):
-        shutil.rmtree(app.config['TRAIN_FOLDER'])
-    os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
-    
-    default_cats = [
-        Category(name="Theft", severity="Medium"),
-        Category(name="Assault", severity="High"),
-        Category(name="Vandalism", severity="Low")
-    ]
-    db.session.add_all(default_cats)
-    db.session.commit()
-    for cat in default_cats:
-        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], cat.name), exist_ok=True)
-    flash("Database and folders reset!", "success")
-    return redirect(url_for('register_page'))
+    """Forces the web database to sync schema and creates default categories."""
+    try:
+        db.drop_all()
+        db.create_all()
+        
+        # Reset training folders locally on the server
+        if os.path.exists(app.config['TRAIN_FOLDER']):
+            shutil.rmtree(app.config['TRAIN_FOLDER'])
+        os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
+        
+        default_cats = [
+            Category(name="Theft", severity="Medium"),
+            Category(name="Assault", severity="High"),
+            Category(name="Vandalism", severity="Low")
+        ]
+        db.session.add_all(default_cats)
+        db.session.commit()
+        
+        for cat in default_cats:
+            os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], cat.name), exist_ok=True)
+            
+        flash("Web Database and folders successfully reset!", "success")
+        return redirect(url_for('register_page'))
+    except Exception as e:
+        return f"Web Database Reset Failed: {str(e)}"
 
-# --- NAVIGATION ROUTES ---
+# --- NAVIGATION ---
 @app.route('/')
 @login_required
 def index():
@@ -120,10 +141,21 @@ def register_page(): return render_template('register.html')
 # --- API ROUTES ---
 @app.route('/api/incident-data')
 def incident_data():
-    """Returns coordinates for the heatmap."""
+    """Provides coordinates for the Leaflet Heatmap."""
     incidents = Incident.query.all()
     data = [[inc.latitude, inc.longitude, 0.8] for inc in incidents if inc.latitude and inc.longitude]
     return jsonify(data)
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    u, p, r = request.form.get('username'), request.form.get('password'), request.form.get('role')
+    if User.query.filter_by(username=u).first():
+        flash("Username already taken.", "danger")
+        return redirect(url_for('register_page'))
+    db.session.add(User(username=u, password=generate_password_hash(p), role=r))
+    db.session.commit()
+    flash("Registration successful! Please login.", "success")
+    return redirect(url_for('login_page'))
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -131,23 +163,15 @@ def login():
     if user and check_password_hash(user.password, request.form.get('password')):
         login_user(user)
         return redirect(url_for('index'))
-    flash("Invalid login", "danger")
-    return redirect(url_for('login_page'))
-
-@app.route('/api/register', methods=['POST'])
-def register():
-    u, p, r = request.form.get('username'), request.form.get('password'), request.form.get('role')
-    if User.query.filter_by(username=u).first():
-        flash("User already exists.", "danger")
-        return redirect(url_for('register_page'))
-    db.session.add(User(username=u, password=generate_password_hash(p), role=r))
-    db.session.commit()
+    flash("Invalid credentials.", "danger")
     return redirect(url_for('login_page'))
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
 
+# --- INITIALIZATION ---
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
