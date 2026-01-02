@@ -10,18 +10,18 @@
         .card { border: none; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         .btn-rose { background-color: var(--rose-pink); color: white; }
         .btn-rose:hover { background-color: #C2185B; color: white; }
-        .img-card { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; }
+        .img-grid { width: 100px; height: 100px; object-fit: cover; border-radius: 8px; cursor: pointer; }
     </style>
 </head>
 <body>
     {% include 'sidebar.html' %}
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="fw-bold" style="color: var(--rose-pink);">CNN Administration</h2>
+            <h2 class="fw-bold" style="color: var(--rose-pink);">AI Dataset Intelligence</h2>
             <div class="d-flex gap-2">
-                <a href="/api/cnn/export-dataset" class="btn btn-rose">📦 Backup ZIP</a>
-                <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#importModal">📥 Restore ZIP</button>
-                <form action="/api/cnn/train" method="POST"><button class="btn btn-dark">🚀 Train Model</button></form>
+                <a href="/api/cnn/export-dataset" class="btn btn-rose">📦 Export ZIP</a>
+                <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#importModal">📥 Import ZIP</button>
+                <form action="/api/cnn/train" method="POST"><button class="btn btn-dark">🚀 Train AI</button></form>
             </div>
         </div>
 
@@ -38,13 +38,13 @@
                         <select name="severity" class="form-select mb-3">
                             <option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option>
                         </select>
-                        <button class="btn btn-rose w-100">Add</button>
+                        <button class="btn btn-rose w-100">Add Category</button>
                     </form>
                 </div>
             </div>
             <div class="col-md-8">
                 <div class="card p-4">
-                    <h5 class="fw-bold mb-3">Bulk Image Upload</h5>
+                    <h5 class="fw-bold mb-3">Upload Training Data</h5>
                     <form action="/api/cnn/upload" method="POST" enctype="multipart/form-data">
                         <div class="row g-2">
                             <div class="col-md-5">
@@ -52,9 +52,7 @@
                                     {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-5">
-                                <input type="file" name="files" class="form-control" multiple required>
-                            </div>
+                            <div class="col-md-5"><input type="file" name="files" class="form-control" multiple required></div>
                             <div class="col-md-2"><button class="btn btn-rose w-100">Upload</button></div>
                         </div>
                     </form>
@@ -68,13 +66,7 @@
             <h6 class="fw-bold" style="color: var(--rose-pink);">{{ cat_name }} ({{ images|length }})</h6>
             <div class="d-flex flex-wrap gap-2">
                 {% for img in images %}
-                <div class="position-relative">
-                    <img src="/static/training_data/{{ cat_name }}/{{ img }}" class="img-card border">
-                    <form action="/api/cnn/delete-image" method="POST" class="position-absolute top-0 end-0">
-                        <input type="hidden" name="category" value="{{ cat_name }}"><input type="hidden" name="filename" value="{{ img }}">
-                        <button class="btn btn-danger btn-sm p-0 px-1">&times;</button>
-                    </form>
-                </div>
+                <img src="/static/training_data/{{ cat_name }}/{{ img }}" class="img-grid border" onclick="window.open(this.src)">
                 {% endfor %}
             </div>
         </div>
@@ -85,9 +77,7 @@
         <div class="modal-dialog">
             <form action="/api/cnn/import-dataset" method="POST" enctype="multipart/form-data" class="modal-content">
                 <div class="modal-header"><h5 class="modal-title">Restore Dataset ZIP</h5></div>
-                <div class="modal-body">
-                    <input type="file" name="zip_file" class="form-control" accept=".zip" required>
-                </div>
+                <div class="modal-body"><input type="file" name="zip_file" class="form-control" accept=".zip" required></div>
                 <div class="modal-footer"><button type="submit" class="btn btn-rose">Restore Now</button></div>
             </form>
         </div>
