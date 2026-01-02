@@ -69,7 +69,14 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- ZIP DATASET MANAGEMENT ---
+# --- API ROUTES ---
+@app.route('/api/incident-data')
+def incident_data():
+    """Provides coordinates for the Leaflet Heatmap."""
+    incidents = Incident.query.all()
+    # Format: [lat, lng, intensity]
+    return jsonify([[i.latitude, i.longitude, 0.8] for i in incidents if i.latitude and i.longitude])
+
 @app.route('/api/cnn/export-dataset')
 @roles_required('Admin')
 def export_dataset():
@@ -94,10 +101,9 @@ def import_dataset():
                     if not Category.query.filter_by(name=d).first():
                         db.session.add(Category(name=d, severity="Medium"))
             db.session.commit()
-        flash("Dataset and categories successfully restored!", "success")
+        flash("Dataset restored!", "success")
     return redirect(url_for('cnn_admin'))
 
-# --- CORE AI ROUTES ---
 @app.route('/api/cnn/train', methods=['POST'])
 @roles_required('Admin')
 def train_model():
@@ -113,7 +119,7 @@ def train_model():
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
         model.fit(train_gen, epochs=5)
         model.save(app.config['MODEL_PATH'])
-        flash("CNN Model updated successfully!", "success")
+        flash("AI Model trained successfully!", "success")
     except Exception as e: flash(str(e), "danger")
     return redirect(url_for('cnn_admin'))
 
@@ -123,18 +129,17 @@ def report_incident():
     file = request.files.get('file')
     lat, lng = request.form.get('latitude'), request.form.get('longitude')
     if file:
-        filename = secure_filename(f"{datetime.now().timestamp()}_{file.filename}")
+        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{file.filename}")
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Predictive Analysis
         ptype = "Unclassified"
         if os.path.exists(app.config['MODEL_PATH']):
             model = tf.keras.models.load_model(app.config['MODEL_PATH'])
             img = tf.keras.preprocessing.image.load_img(filepath, target_size=(128,128))
             arr = tf.keras.preprocessing.image.img_to_array(img)/255.0
             pred = model.predict(np.expand_dims(arr, axis=0))
-            cats = sorted(os.listdir(app.config['TRAIN_FOLDER']))
+            cats = sorted([d for d in os.listdir(app.config['TRAIN_FOLDER']) if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d))])
             ptype = cats[np.argmax(pred)]
 
         new_inc = Incident(incident_type=ptype, latitude=float(lat or 0), longitude=float(lng or 0), image_url=filename)
@@ -142,12 +147,7 @@ def report_incident():
         flash(f"Incident reported: {ptype}", "success")
     return redirect(url_for('index'))
 
-@app.route('/api/incident-data')
-def incident_data():
-    incidents = Incident.query.all()
-    return jsonify([[i.latitude, i.longitude, 0.8] for i in incidents if i.latitude])
-
-# --- VIEW ROUTES ---
+# --- VIEWS ---
 @app.route('/')
 @login_required
 def index(): return render_template('index.html')
@@ -166,7 +166,10 @@ def reports():
 @roles_required('Admin')
 def cnn_admin():
     categories = Category.query.all()
-    dataset = {cat.name: os.listdir(os.path.join(app.config['TRAIN_FOLDER'], cat.name)) for cat in categories}
+    dataset = {}
+    for cat in categories:
+        path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
+        dataset[cat.name] = os.listdir(path) if os.path.exists(path) else []
     return render_template('cnn_admin.html', categories=categories, dataset=dataset)
 
 @app.route('/api/cnn/upload', methods=['POST'])
@@ -176,21 +179,30 @@ def upload_training_images():
     files = request.files.getlist('files')
     if files and cat:
         target_dir = os.path.join(app.config['TRAIN_FOLDER'], cat)
+        os.makedirs(target_dir, exist_ok=True)
         for file in files:
             if file.filename: file.save(os.path.join(target_dir, secure_filename(file.filename)))
         flash(f"Uploaded {len(files)} images to {cat}", "success")
     return redirect(url_for('cnn_admin'))
 
-# Registration, Login, and Auth (Same as previous, ensure logic is correct)
+@app.route('/api/cnn/add-category', methods=['POST'])
+@roles_required('Admin')
+def add_category():
+    name = request.form.get('name')
+    if name and not Category.query.filter_by(name=name).first():
+        db.session.add(Category(name=name, severity=request.form.get('severity')))
+        db.session.commit()
+        os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], name), exist_ok=True)
+    return redirect(url_for('cnn_admin'))
+
 @app.route('/login')
 def login_page(): return render_template('login.html')
 @app.route('/register')
 def register_page(): return render_template('register.html')
 @app.route('/api/login', methods=['POST'])
 def login():
-    u, p = request.form.get('username'), request.form.get('password')
-    user = User.query.filter_by(username=u).first()
-    if user and check_password_hash(user.password, p):
+    user = User.query.filter_by(username=request.form.get('username')).first()
+    if user and check_password_hash(user.password, request.form.get('password')):
         login_user(user); return redirect(url_for('index'))
     return redirect(url_for('login_page'))
 @app.route('/logout')
