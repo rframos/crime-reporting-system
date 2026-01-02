@@ -1,25 +1,72 @@
-<div class="sidebar" style="height: 100vh; background: #0038A8; color: white; padding: 20px 0; position: fixed; width: 260px; z-index: 1000; border-right: 4px solid #FFD700;">
-    <div class="text-center mb-4">
-        <h4 class="fw-bold" style="color: #FFD700;">SafeCity SJDM</h4>
-        <small class="text-light opacity-75">Rising City of Bulacan</small>
-    </div>
-    
-    <nav class="nav flex-column">
-        <a href="/" class="nav-link text-white py-3 px-4 border-bottom border-primary {% if request.path == '/' %}bg-warning text-dark{% endif %}">📍 Report Map</a>
-        <a href="/heatmap" class="nav-link text-white py-3 px-4 border-bottom border-primary {% if request.path == '/heatmap' %}bg-warning text-dark{% endif %}">🔥 Crime Heatmap</a>
-        <a href="/reports" class="nav-link text-white py-3 px-4 border-bottom border-primary {% if request.path == '/reports' %}bg-warning text-dark{% endif %}">📋 Incident Logs</a>
-        <a href="/contacts" class="nav-link text-white py-3 px-4 border-bottom border-primary {% if request.path == '/contacts' %}bg-warning text-dark{% endif %}">📞 Emergency Contacts</a>
+<div class="d-flex flex-column flex-shrink-0 p-3 text-white bg-dark shadow" style="width: 260px; height: 100vh; position: fixed; left: 0; top: 0;">
+    <a href="/" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
+        <span class="fs-4 fw-bold text-warning">🛡️ SafeCity SJDM</span>
+    </a>
+    <hr>
+    <ul class="nav nav-pills flex-column mb-auto">
+        <li class="nav-item">
+            <a href="/" class="nav-link text-white {{ 'active' if request.path == '/' }}">
+                🏠 Home Dashboard
+            </a>
+        </li>
+        <li>
+            <a href="/heatmap" class="nav-link text-white {{ 'active' if request.path == '/heatmap' }}">
+                📍 Incident Heatmap
+            </a>
+        </li>
+        <li>
+            <a href="/reports" class="nav-link text-white {{ 'active' if request.path == '/reports' }}">
+                📋 Incident Reports
+            </a>
+        </li>
         
         {% if current_user.role == 'Admin' %}
-        <a href="/cnn-admin" class="nav-link text-white py-3 px-4 bg-dark">⚙️ CNN Intelligence</a>
+        <li class="mt-3">
+            <small class="text-uppercase text-muted px-3" style="font-size: 0.7rem;">Administration</small>
+        </li>
+        <li>
+            <a href="/cnn-admin" class="nav-link text-white {{ 'active' if request.path == '/cnn-admin' }}">
+                ⚙️ CNN Intelligence
+            </a>
+        </li>
         {% endif %}
-    </nav>
 
-    <div class="px-4" style="position: absolute; bottom: 20px; width: 100%;">
-        <div class="p-2 rounded bg-white text-dark small mb-2 text-center">
-            <strong>{{ current_user.username }}</strong><br>
-            <span class="badge bg-primary">{{ current_user.role }}</span>
-        </div>
-        <a href="/logout" class="btn btn-sm btn-danger w-100">Sign Out</a>
+        {% if current_user.role in ['Police Officer', 'Barangay Official'] %}
+        <li class="mt-3">
+            <small class="text-uppercase text-muted px-3" style="font-size: 0.7rem;">Officer Tools</small>
+        </li>
+        <li>
+            <a href="/contacts" class="nav-link text-white {{ 'active' if request.path == '/contacts' }}">
+                📞 Dispatch Contacts
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+    <hr>
+    <div class="dropdown">
+        <a href="#" class="d-flex align-items-center text-white text-decoration-none dropdown-toggle" id="dropdownUser1" data-bs-toggle="dropdown" aria-expanded="false">
+            <div class="rounded-circle bg-primary me-2 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; font-size: 12px;">
+                {{ current_user.username[:2]|upper }}
+            </div>
+            <strong>{{ current_user.username }}</strong>
+        </a>
+        <ul class="dropdown-menu dropdown-menu-dark text-small shadow" aria-labelledby="dropdownUser1">
+            <li><span class="dropdown-item-text text-muted small">Role: {{ current_user.role }}</span></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="/logout">Sign out</a></li>
+        </ul>
     </div>
 </div>
+
+<style>
+    .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    .nav-link.active {
+        background-color: #0038A8 !important; /* SJDM Official Blue */
+        color: #FFD700 !important; /* SJDM Official Gold */
+    }
+    body {
+        padding-left: 260px; /* Offset for the fixed sidebar */
+    }
+</style>
