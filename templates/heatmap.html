@@ -1,107 +1,61 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>SafeCity SJDM | Heatmap</title>
+    <meta charset="UTF-8">
+    <title>SafeCity SJDM | Incident Heatmap</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        .main-content { margin-left: 260px; height: 100vh; position: relative; }
-        #map { height: 100%; width: 100%; }
-        .filter-panel { 
-            position: absolute; top: 20px; right: 20px; z-index: 1000; 
-            background: white; padding: 20px; border-radius: 12px; 
-            width: 280px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            border-top: 5px solid #0038A8;
-        }
+        .main-content { margin-left: 260px; padding: 30px; }
+        #map { height: 75vh; width: 100%; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body class="bg-light">
     {% include 'sidebar.html' %}
+
     <div class="main-content">
-        <div id="map"></div>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold text-primary">📍 SJDM Safety Heatmap</h2>
+            <span class="badge bg-warning text-dark p-2">Live Feed</span>
+        </div>
 
-        <div class="filter-panel">
-            <h6 class="fw-bold mb-3">Map Filters</h6>
-            
-            <div class="mb-3">
-                <label class="small fw-bold">Incident Type</label>
-                <select id="typeFilter" class="form-select form-select-sm" onchange="loadHeatmap()">
-                    <option value="All">All Categories</option>
-                    {% for cat in categories %}
-                    <option value="{{ cat.name }}">{{ cat.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
+        <div class="card border-0 shadow-sm p-2">
+            <div id="map"></div>
+        </div>
 
-            <div class="mb-3">
-                <label class="small fw-bold">Minimum Severity</label>
-                <select id="sevFilter" class="form-select form-select-sm" onchange="loadHeatmap()">
-                    <option value="All">All Severities</option>
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                    <option value="Critical">Critical</option>
-                </select>
-            </div>
-
-            <hr>
-            <div class="mb-2 d-flex justify-content-between">
-                <label class="small fw-bold">Heat Radius</label>
-                <span id="radiusVal" class="badge bg-primary">25</span>
-            </div>
-            <input type="range" class="form-range" id="radiusRange" min="5" max="50" value="25" oninput="updateRadius(this.value)">
-            
-            <div class="mt-3 small text-muted">
-                <div class="d-flex align-items-center gap-2">
-                    <div style="width:12px; height:12px; background:red; border-radius:50%"></div> High Density
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <div style="width:12px; height:12px; background:blue; border-radius:50%"></div> Low Density
-                </div>
-            </div>
+        <div class="mt-4 p-3 bg-white rounded shadow-sm">
+            <h5>Legend</h5>
+            <p class="text-muted small">
+                Colors indicate report density in San Jose del Monte. 
+                <strong class="text-danger">Red</strong> = High Density | 
+                <strong class="text-primary">Blue</strong> = Low Density.
+            </p>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
+
     <script>
-        const map = L.map('map').setView([14.8087, 121.0450], 13);
-        
-        // Using a cleaner CartoDB Voyager map style
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            attribution: 'SafeCity SJDM'
+        // Center on San Jose del Monte
+        var map = L.map('map').setView([14.8098, 121.0469], 13);
+
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        let heatLayer = null;
-
-        async function loadHeatmap() {
-            const type = document.getElementById('typeFilter').value;
-            const sev = document.getElementById('sevFilter').value;
-            const radius = document.getElementById('radiusRange').value;
-
-            const res = await fetch(`/api/incidents?type=${type}&severity=${sev}`);
-            const data = await res.json();
-
-            // Format: [lat, lng, intensity]
-            const points = data.map(i => [i.lat, i.lng, 0.7]);
-
-            if (heatLayer) map.removeLayer(heatLayer);
-            
-            heatLayer = L.heatLayer(points, {
-                radius: parseInt(radius),
-                blur: 15,
-                maxZoom: 17,
-                gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'}
-            }).addTo(map);
-        }
-
-        function updateRadius(val) {
-            document.getElementById('radiusVal').innerText = val;
-            loadHeatmap();
-        }
-
-        // Initial Load
-        loadHeatmap();
+        fetch('/api/incident-data')
+            .then(response => response.json())
+            .then(data => {
+                if (data.length > 0) {
+                    L.heatLayer(data, {
+                        radius: 25,
+                        blur: 15,
+                        maxZoom: 17,
+                        gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'}
+                    }).addTo(map);
+                }
+            });
     </script>
 </body>
 </html>
