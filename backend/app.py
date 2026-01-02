@@ -3,6 +3,7 @@ import datetime
 import shutil
 import zipfile
 import io
+import gc
 import numpy as np
 import tensorflow as tf
 from functools import wraps
@@ -15,7 +16,7 @@ from werkzeug.utils import secure_filename
 # --- CONFIGURATION ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'sjdm_rose_pink_2026')
+app.config['SECRET_KEY'] = 'sjdm_rose_pink_2026'
 
 db_url = os.environ.get('DATABASE_URL')
 if db_url and db_url.startswith("postgres://"):
@@ -23,7 +24,6 @@ if db_url and db_url.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url or 'sqlite:///' + os.path.join(base_dir, 'local.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Paths
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['TRAIN_FOLDER'] = os.path.join(base_dir, 'static/training_data')
 app.config['MODEL_PATH'] = os.path.join(base_dir, 'static/incident_model.h5')
@@ -69,85 +69,48 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- API ROUTES ---
-@app.route('/api/incident-data')
-def incident_data():
-    """Provides coordinates for the Leaflet Heatmap."""
-    incidents = Incident.query.all()
-    # Format: [lat, lng, intensity]
-    return jsonify([[i.latitude, i.longitude, 0.8] for i in incidents if i.latitude and i.longitude])
-
-@app.route('/api/cnn/export-dataset')
-@roles_required('Admin')
-def export_dataset():
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(app.config['TRAIN_FOLDER']):
-            for file in files:
-                file_path = os.path.join(root, file)
-                zf.write(file_path, os.path.relpath(file_path, app.config['TRAIN_FOLDER']))
-    memory_file.seek(0)
-    return send_file(memory_file, download_name='sjdm_backup.zip', as_attachment=True)
-
-@app.route('/api/cnn/import-dataset', methods=['POST'])
-@roles_required('Admin')
-def import_dataset():
-    file = request.files.get('zip_file')
-    if file and file.filename.endswith('.zip'):
-        with zipfile.ZipFile(file) as zf:
-            zf.extractall(app.config['TRAIN_FOLDER'])
-            for d in os.listdir(app.config['TRAIN_FOLDER']):
-                if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d)):
-                    if not Category.query.filter_by(name=d).first():
-                        db.session.add(Category(name=d, severity="Medium"))
-            db.session.commit()
-        flash("Dataset restored!", "success")
-    return redirect(url_for('cnn_admin'))
-
+# --- AI TRAINING (MEMORY OPTIMIZED) ---
 @app.route('/api/cnn/train', methods=['POST'])
 @roles_required('Admin')
 def train_model():
     try:
+        # Reduced target_size and batch_size to prevent memory crashes
         datagen = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255, validation_split=0.2)
-        train_gen = datagen.flow_from_directory(app.config['TRAIN_FOLDER'], target_size=(128,128), batch_size=32, class_mode='categorical', subset='training')
+        train_gen = datagen.flow_from_directory(
+            app.config['TRAIN_FOLDER'], 
+            target_size=(64, 64), 
+            batch_size=16, 
+            class_mode='categorical', 
+            subset='training'
+        )
+        
+        if train_gen.samples == 0:
+            flash("No images found for training!", "danger")
+            return redirect(url_for('cnn_admin'))
+
         model = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(128,128,3)),
+            tf.keras.layers.Conv2D(16, (3,3), activation='relu', input_shape=(64, 64, 3)),
             tf.keras.layers.MaxPooling2D(2,2),
             tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(64, activation='relu'),
             tf.keras.layers.Dense(train_gen.num_classes, activation='softmax')
         ])
+        
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
         model.fit(train_gen, epochs=5)
         model.save(app.config['MODEL_PATH'])
-        flash("AI Model trained successfully!", "success")
-    except Exception as e: flash(str(e), "danger")
+        
+        # Cleanup memory
+        del model
+        gc.collect()
+        tf.keras.backend.clear_session()
+        
+        flash("AI Model successfully created!", "success")
+    except Exception as e:
+        flash(f"Error: {str(e)}", "danger")
     return redirect(url_for('cnn_admin'))
 
-@app.route('/api/incident/report', methods=['POST'])
-@login_required
-def report_incident():
-    file = request.files.get('file')
-    lat, lng = request.form.get('latitude'), request.form.get('longitude')
-    if file:
-        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{file.filename}")
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        
-        ptype = "Unclassified"
-        if os.path.exists(app.config['MODEL_PATH']):
-            model = tf.keras.models.load_model(app.config['MODEL_PATH'])
-            img = tf.keras.preprocessing.image.load_img(filepath, target_size=(128,128))
-            arr = tf.keras.preprocessing.image.img_to_array(img)/255.0
-            pred = model.predict(np.expand_dims(arr, axis=0))
-            cats = sorted([d for d in os.listdir(app.config['TRAIN_FOLDER']) if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d))])
-            ptype = cats[np.argmax(pred)]
-
-        new_inc = Incident(incident_type=ptype, latitude=float(lat or 0), longitude=float(lng or 0), image_url=filename)
-        db.session.add(new_inc); db.session.commit()
-        flash(f"Incident reported: {ptype}", "success")
-    return redirect(url_for('index'))
-
-# --- VIEWS ---
+# --- OTHER ROUTES ---
 @app.route('/')
 @login_required
 def index(): return render_template('index.html')
@@ -162,14 +125,40 @@ def reports():
     incidents = Incident.query.order_by(Incident.created_at.desc()).all()
     return render_template('reports.html', incidents=incidents)
 
+@app.route('/api/incident-data')
+def incident_data():
+    incidents = Incident.query.all()
+    return jsonify([[i.latitude, i.longitude, 0.8] for i in incidents if i.latitude])
+
+@app.route('/api/incident/report', methods=['POST'])
+@login_required
+def report_incident():
+    file = request.files.get('file')
+    lat, lng = request.form.get('latitude'), request.form.get('longitude')
+    if file:
+        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{file.filename}")
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        ptype = "Unclassified"
+        if os.path.exists(app.config['MODEL_PATH']):
+            model = tf.keras.models.load_model(app.config['MODEL_PATH'])
+            img = tf.keras.preprocessing.image.load_img(filepath, target_size=(64, 64))
+            arr = tf.keras.preprocessing.image.img_to_array(img)/255.0
+            pred = model.predict(np.expand_dims(arr, axis=0))
+            cats = sorted([d for d in os.listdir(app.config['TRAIN_FOLDER']) if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d))])
+            ptype = cats[np.argmax(pred)]
+
+        new_inc = Incident(incident_type=ptype, latitude=float(lat or 0), longitude=float(lng or 0), image_url=filename)
+        db.session.add(new_inc); db.session.commit()
+        flash(f"Reported: {ptype}", "success")
+    return redirect(url_for('index'))
+
 @app.route('/cnn-admin')
 @roles_required('Admin')
 def cnn_admin():
     categories = Category.query.all()
-    dataset = {}
-    for cat in categories:
-        path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
-        dataset[cat.name] = os.listdir(path) if os.path.exists(path) else []
+    dataset = {cat.name: os.listdir(os.path.join(app.config['TRAIN_FOLDER'], cat.name)) for cat in categories}
     return render_template('cnn_admin.html', categories=categories, dataset=dataset)
 
 @app.route('/api/cnn/upload', methods=['POST'])
@@ -179,22 +168,33 @@ def upload_training_images():
     files = request.files.getlist('files')
     if files and cat:
         target_dir = os.path.join(app.config['TRAIN_FOLDER'], cat)
-        os.makedirs(target_dir, exist_ok=True)
-        for file in files:
-            if file.filename: file.save(os.path.join(target_dir, secure_filename(file.filename)))
-        flash(f"Uploaded {len(files)} images to {cat}", "success")
+        for f in files:
+            if f.filename: f.save(os.path.join(target_dir, secure_filename(f.filename)))
     return redirect(url_for('cnn_admin'))
 
 @app.route('/api/cnn/add-category', methods=['POST'])
 @roles_required('Admin')
 def add_category():
     name = request.form.get('name')
-    if name and not Category.query.filter_by(name=name).first():
+    if name:
         db.session.add(Category(name=name, severity=request.form.get('severity')))
         db.session.commit()
         os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], name), exist_ok=True)
     return redirect(url_for('cnn_admin'))
 
+@app.route('/api/cnn/export-dataset')
+@roles_required('Admin')
+def export_dataset():
+    memory_file = io.BytesIO()
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(app.config['TRAIN_FOLDER']):
+            for file in files:
+                file_path = os.path.join(root, file)
+                zf.write(file_path, os.path.relpath(file_path, app.config['TRAIN_FOLDER']))
+    memory_file.seek(0)
+    return send_file(memory_file, download_name='dataset.zip', as_attachment=True)
+
+# Auth routes remain standard...
 @app.route('/login')
 def login_page(): return render_template('login.html')
 @app.route('/register')
@@ -210,4 +210,4 @@ def logout(): logout_user(); return redirect(url_for('login_page'))
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    app.run(host='0.0.0.0', port=5000)
