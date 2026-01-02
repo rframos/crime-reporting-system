@@ -4,54 +4,74 @@
     <title>SafeCity | CNN Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        :root { --sjdm-blue: #0038A8; }
-        body { background: #f4f7f6; }
+        :root { --rose-pink: #E91E63; }
         .main-content { margin-left: 260px; padding: 40px; }
-        .card { border-radius: 15px; border: none; }
-        .img-preview { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin: 4px; border: 1px solid #ddd; }
+        .card { border: none; border-radius: 15px; }
+        .img-container { position: relative; display: inline-block; }
+        .img-grid { width: 100px; height: 100px; object-fit: cover; border-radius: 10px; border: 2px solid white; cursor: zoom-in; }
+        .btn-remove { position: absolute; top: -5px; right: -5px; background: red; color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; border: none; line-height: 1; cursor: pointer; }
     </style>
 </head>
-<body>
+<body class="bg-light">
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <div class="d-flex justify-content-between mb-4">
-            <h2 class="fw-bold text-primary">AI Dataset Management</h2>
-            <form action="/api/cnn/train" method="POST">
-                <button class="btn btn-dark shadow">🚀 Retrain AI Model</button>
-            </form>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold" style="color: var(--rose-pink);">AI Dataset Control</h2>
+            <div class="d-flex gap-2">
+                <a href="/api/cnn/export-dataset" class="btn btn-primary">📦 Download Dataset (ZIP)</a>
+                <form action="/api/cnn/train" method="POST"><button class="btn btn-dark">🚀 Run AI Training</button></form>
+            </div>
         </div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}{% for cat, msg in messages %}
-                <div class="alert alert-{{ cat }}">{{ msg }}</div>
-            {% endfor %}{% endif %}
-        {% endwith %}
+        {% with messages = get_flashed_messages() %}{% if messages %}{% for m in messages %}
+        <div class="alert alert-info">{{ m }}</div>
+        {% endfor %}{% endif %}{% endwith %}
 
         <div class="card p-4 shadow-sm mb-4">
-            <h5 class="fw-bold mb-3">Upload Training Images</h5>
+            <h6 class="fw-bold mb-3">Bulk Image Uploader</h6>
             <form action="/api/cnn/upload" method="POST" enctype="multipart/form-data">
                 <div class="row g-2">
                     <div class="col-md-4">
-                        <select name="category" class="form-select" required>
-                            {% for c in categories %}<option value="{{c.name}}">{{c.name}}</option>{% endfor %}
+                        <select name="category" class="form-select">
+                            {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
                         </select>
                     </div>
                     <div class="col-md-6"><input type="file" name="files" class="form-control" multiple required></div>
-                    <div class="col-md-2"><button class="btn btn-primary w-100">Upload</button></div>
+                    <div class="col-md-2"><button class="btn btn-danger w-100" style="background: var(--rose-pink);">Upload</button></div>
                 </div>
             </form>
         </div>
 
         {% for cat_name, images in dataset.items() %}
         <div class="card p-3 mb-3 shadow-sm">
-            <h6 class="fw-bold">{{ cat_name }} <span class="badge bg-secondary">{{ images|length }} images</span></h6>
-            <div class="d-flex flex-wrap mt-2">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold m-0" style="color: var(--rose-pink);">{{ cat_name }} ({{ images|length }})</h6>
+                <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">Reload Images</button>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
                 {% for img in images %}
-                <img src="/static/training_data/{{ cat_name }}/{{ img }}" class="img-preview" title="{{ img }}">
+                <div class="img-container" id="img-{{ loop.index0 }}-{{ cat_name }}">
+                    <img src="/static/training_data/{{ cat_name }}/{{ img }}" class="img-grid" onclick="window.open(this.src)">
+                    <button class="btn-remove" onclick="removeImage('{{ cat_name }}', '{{ img }}', 'img-{{ loop.index0 }}-{{ cat_name }}')">×</button>
+                </div>
                 {% endfor %}
             </div>
         </div>
         {% endfor %}
     </div>
+
+    <script>
+        function removeImage(cat, filename, elementId) {
+            if(confirm("Delete this image?")) {
+                fetch('/api/cnn/delete-image', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({category: cat, filename: filename})
+                }).then(res => {
+                    if(res.ok) document.getElementById(elementId).remove();
+                });
+            }
+        }
+    </script>
 </body>
 </html>
