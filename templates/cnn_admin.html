@@ -4,71 +4,54 @@
     <title>SafeCity | CNN Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        :root { --rose-pink: #E91E63; --rose-light: #FCE4EC; }
-        body { background-color: var(--rose-light); }
+        :root { --sjdm-blue: #0038A8; }
+        body { background: #f4f7f6; }
         .main-content { margin-left: 260px; padding: 40px; }
-        .card { border: none; border-radius: 15px; }
-        .btn-rose { background-color: var(--rose-pink); color: white; }
-        .img-grid { width: 90px; height: 90px; object-fit: cover; border-radius: 8px; border: 2px solid white; }
+        .card { border-radius: 15px; border: none; }
+        .img-preview { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin: 4px; border: 1px solid #ddd; }
     </style>
 </head>
 <body>
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="fw-bold" style="color: var(--rose-pink);">AI Dataset Control</h2>
-            <div class="d-flex gap-2">
-                <a href="/api/cnn/export-dataset" class="btn btn-rose">📦 Export Dataset</a>
-                <form action="/api/cnn/train" method="POST"><button class="btn btn-dark">🚀 Run Training</button></form>
-            </div>
+        <div class="d-flex justify-content-between mb-4">
+            <h2 class="fw-bold text-primary">AI Dataset Management</h2>
+            <form action="/api/cnn/train" method="POST">
+                <button class="btn btn-dark shadow">🚀 Retrain AI Model</button>
+            </form>
         </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}{% for category, msg in messages %}<div class="alert alert-{{ category }}">{{ msg }}</div>{% endfor %}{% endif %}
+            {% if messages %}{% for cat, msg in messages %}
+                <div class="alert alert-{{ cat }}">{{ msg }}</div>
+            {% endfor %}{% endif %}
         {% endwith %}
 
-        <div class="row g-4 mb-4">
-            <div class="col-md-4">
-                <div class="card p-4 shadow-sm">
-                    <h6 class="fw-bold mb-3">Add AI Category</h6>
-                    <form action="/api/cnn/add-category" method="POST">
-                        <input type="text" name="name" class="form-control mb-2" placeholder="e.g. Fire" required>
-                        <select name="severity" class="form-select mb-3">
-                            <option value="Low">Low</option><option value="High">High</option>
+        <div class="card p-4 shadow-sm mb-4">
+            <h5 class="fw-bold mb-3">Upload Training Images</h5>
+            <form action="/api/cnn/upload" method="POST" enctype="multipart/form-data">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <select name="category" class="form-select" required>
+                            {% for c in categories %}<option value="{{c.name}}">{{c.name}}</option>{% endfor %}
                         </select>
-                        <button class="btn btn-rose w-100">Create</button>
-                    </form>
+                    </div>
+                    <div class="col-md-6"><input type="file" name="files" class="form-control" multiple required></div>
+                    <div class="col-md-2"><button class="btn btn-primary w-100">Upload</button></div>
                 </div>
-            </div>
-            <div class="col-md-8">
-                <div class="card p-4 shadow-sm">
-                    <h6 class="fw-bold mb-3">Bulk Image Upload</h6>
-                    <form action="/api/cnn/upload" method="POST" enctype="multipart/form-data">
-                        <div class="row g-2">
-                            <div class="col-md-5">
-                                <select name="category" class="form-select">
-                                    {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-5"><input type="file" name="files" class="form-control" multiple required></div>
-                            <div class="col-md-2"><button class="btn btn-rose w-100">Upload</button></div>
-                        </div>
-                    </form>
-                </div>
-            </div>
+            </form>
         </div>
 
         {% for cat_name, images in dataset.items() %}
         <div class="card p-3 mb-3 shadow-sm">
-            <h6 class="fw-bold mb-3" style="color: var(--rose-pink);">{{ cat_name }} ({{ images|length }})</h6>
-            <div class="d-flex flex-wrap gap-2">
+            <h6 class="fw-bold">{{ cat_name }} <span class="badge bg-secondary">{{ images|length }} images</span></h6>
+            <div class="d-flex flex-wrap mt-2">
                 {% for img in images %}
-                <img src="/static/training_data/{{ cat_name }}/{{ img }}" class="img-grid" onclick="window.open(this.src)">
+                <img src="/static/training_data/{{ cat_name }}/{{ img }}" class="img-preview" title="{{ img }}">
                 {% endfor %}
             </div>
         </div>
         {% endfor %}
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
