@@ -7,7 +7,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from PIL import Image  # Replacing OpenCV with Pillow
+from PIL import Image
 
 # --- CONFIGURATION ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -19,7 +19,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static/uploads')
 app.config['TRAIN_FOLDER'] = os.path.join(base_dir, 'static/training_data')
 
-# Ensure directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
 
@@ -67,7 +66,6 @@ def roles_required(*roles):
 def reset_db():
     db.drop_all()
     db.create_all()
-    
     if os.path.exists(app.config['TRAIN_FOLDER']):
         shutil.rmtree(app.config['TRAIN_FOLDER'])
     os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
@@ -148,12 +146,11 @@ def upload_training():
             filename = secure_filename(f.filename)
             save_path = os.path.join(cat_path, filename)
             f.save(save_path)
-            # Basic Pillow Check: Ensure it's a valid image and normalize size
             try:
                 with Image.open(save_path) as img:
-                    img.verify() # check if it's a valid image
+                    img.verify() 
             except Exception:
-                os.remove(save_path) # remove corrupt file
+                os.remove(save_path) 
     
     flash(f"Images uploaded to {cat_name}.", "success")
     return redirect(url_for('cnn_admin'))
@@ -173,16 +170,8 @@ def delete_training_img():
 @app.route('/api/train-model', methods=['POST'])
 @roles_required('Admin')
 def train_model():
-    """
-    CNN training logic using TensorFlow and Pillow for image resizing.
-    """
-    try:
-        from tensorflow.keras.preprocessing.image import ImageDataGenerator
-        # This will be implemented fully once training data is ready
-        flash("CNN Training Process Triggered with Pillow Support.", "info")
-        return jsonify({"status": "processing"})
-    except ImportError:
-        return jsonify({"status": "error", "message": "ML libraries not found"}), 500
+    flash("CNN Training Process Triggered.", "info")
+    return jsonify({"status": "processing"})
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -190,7 +179,6 @@ def register():
     if User.query.filter_by(username=u).first():
         flash("User already exists.", "danger")
         return redirect(url_for('register_page'))
-    
     db.session.add(User(username=u, password=generate_password_hash(p), role=r))
     db.session.commit()
     flash("Account created! Please login.", "success")
