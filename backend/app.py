@@ -72,71 +72,89 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- DATABASE & TRAINING ROUTES ---
-@app.route('/reset-db')
-def reset_db():
+# --- CNN PREDICTION UTILITY ---
+def predict_incident(image_path):
+    if not os.path.exists(app.config['MODEL_PATH']):
+        return "Manual Review Required"
+    
     try:
-        db.drop_all(); db.create_all()
-        if os.path.exists(app.config['TRAIN_FOLDER']): shutil.rmtree(app.config['TRAIN_FOLDER'])
-        os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
-        default_cats = [Category(name="Theft", severity="Medium"), Category(name="Assault", severity="High")]
-        db.session.add_all(default_cats); db.session.commit()
-        for cat in default_cats: os.makedirs(os.path.join(app.config['TRAIN_FOLDER'], cat.name), exist_ok=True)
-        flash("System Reset Successful", "success")
-        return redirect(url_for('register_page'))
-    except Exception as e: return f"Reset Failed: {str(e)}"
+        model = tf.keras.models.load_model(app.config['MODEL_PATH'])
+        img = tf.keras.preprocessing.image.load_img(image_path, target_size=(128, 128))
+        img_array = tf.keras.preprocessing.image.img_to_array(img) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
 
+        predictions = model.predict(img_array)
+        # Get category names from folder structure
+        categories = sorted(os.listdir(app.config['TRAIN_FOLDER']))
+        result = categories[np.argmax(predictions)]
+        return result
+    except:
+        return "Classification Error"
+
+# --- CORE ROUTES ---
 @app.route('/api/cnn/train', methods=['POST'])
 @roles_required('Admin')
 def train_model():
-    """Builds and trains a CNN model using the training_data folder."""
     try:
-        img_size = (128, 128)
-        batch_size = 32
-
-        # Data Preprocessing
         datagen = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255, validation_split=0.2)
+        train_gen = datagen.flow_from_directory(app.config['TRAIN_FOLDER'], target_size=(128,128), batch_size=32, class_mode='categorical', subset='training')
         
-        train_generator = datagen.flow_from_directory(
-            app.config['TRAIN_FOLDER'],
-            target_size=img_size,
-            batch_size=batch_size,
-            class_mode='categorical',
-            subset='training'
-        )
-
-        if train_generator.samples == 0:
-            flash("No images found for training!", "danger")
+        if train_gen.samples == 0:
+            flash("Upload images first!", "danger")
             return redirect(url_for('cnn_admin'))
 
-        # Simple CNN Architecture
         model = tf.keras.Sequential([
-            tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(128, 128, 3)),
-            tf.keras.layers.MaxPooling2D(2, 2),
+            tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(128,128,3)),
+            tf.keras.layers.MaxPooling2D(2,2),
             tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dense(train_generator.num_classes, activation='softmax')
+            tf.keras.layers.Dense(train_gen.num_classes, activation='softmax')
         ])
-
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-        model.fit(train_generator, epochs=5)
-        
+        model.fit(train_gen, epochs=5)
         model.save(app.config['MODEL_PATH'])
-        flash("CNN Model trained and saved successfully!", "success")
-    except Exception as e:
-        flash(f"Training Error: {str(e)}", "danger")
-    
+        flash("Model trained successfully!", "success")
+    except Exception as e: flash(f"Error: {str(e)}", "danger")
     return redirect(url_for('cnn_admin'))
 
-# --- PREVIOUS ROUTES ---
+@app.route('/api/incident/report', methods=['POST'])
+@login_required
+def report_incident():
+    file = request.files.get('file')
+    lat = request.form.get('latitude')
+    lng = request.form.get('longitude')
+    
+    if file:
+        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{file.filename}")
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # Auto-Classify using CNN
+        predicted_type = predict_incident(filepath)
+        
+        new_incident = Incident(
+            incident_type=predicted_type,
+            latitude=float(lat) if lat else 0.0,
+            longitude=float(lng) if lng else 0.0,
+            image_url=filename,
+            severity="Auto-Assigned"
+        )
+        db.session.add(new_incident)
+        db.session.commit()
+        flash(f"Incident reported! AI detected: {predicted_type}", "success")
+    
+    return redirect(url_for('index'))
+
+# --- VIEWS ---
+@app.route('/')
+@login_required
+def index():
+    return render_template('index.html')
+
 @app.route('/cnn-admin')
 @roles_required('Admin')
 def cnn_admin():
     categories = Category.query.all()
-    dataset = {}
-    for cat in categories:
-        path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
-        dataset[cat.name] = os.listdir(path) if os.path.exists(path) else []
+    dataset = {cat.name: os.listdir(os.path.join(app.config['TRAIN_FOLDER'], cat.name)) for cat in categories}
     return render_template('cnn_admin.html', categories=categories, dataset=dataset)
 
 @app.route('/api/cnn/add-category', methods=['POST'])
@@ -152,22 +170,17 @@ def add_category():
 @app.route('/api/cnn/upload', methods=['POST'])
 @roles_required('Admin')
 def upload_training_image():
-    category, file = request.form.get('category'), request.files.get('file')
-    if file and category:
-        file.save(os.path.join(app.config['TRAIN_FOLDER'], category, secure_filename(file.filename)))
+    cat, file = request.form.get('category'), request.files.get('file')
+    if file: file.save(os.path.join(app.config['TRAIN_FOLDER'], cat, secure_filename(file.filename)))
     return redirect(url_for('cnn_admin'))
 
 @app.route('/api/cnn/delete-image', methods=['POST'])
 @roles_required('Admin')
 def delete_training_image():
-    category, filename = request.form.get('category'), request.form.get('filename')
-    path = os.path.join(app.config['TRAIN_FOLDER'], category, filename)
+    cat, name = request.form.get('category'), request.form.get('filename')
+    path = os.path.join(app.config['TRAIN_FOLDER'], cat, name)
     if os.path.exists(path): os.remove(path)
     return redirect(url_for('cnn_admin'))
-
-@app.route('/')
-@login_required
-def index(): return render_template('index.html', categories=Category.query.all())
 
 @app.route('/heatmap')
 @login_required
@@ -205,6 +218,11 @@ def login():
 
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
+
+@app.route('/api/incident-data')
+def incident_data():
+    incidents = Incident.query.all()
+    return jsonify([[i.latitude, i.longitude, 0.8] for i in incidents if i.latitude])
 
 if __name__ == '__main__':
     with app.app_context(): db.create_all()
