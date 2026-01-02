@@ -1,61 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>SafeCity SJDM | Incident Heatmap</title>
+    <title>SafeCity | Heatmap</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        .main-content { margin-left: 260px; padding: 30px; }
-        #map { height: 75vh; width: 100%; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        :root { --rose-pink: #E91E63; --rose-light: #FCE4EC; }
+        body { background-color: var(--rose-light); }
+        .main-content { margin-left: 260px; padding: 40px; }
+        #map { height: 75vh; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
     </style>
 </head>
-<body class="bg-light">
+<body>
     {% include 'sidebar.html' %}
-
     <div class="main-content">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="fw-bold text-primary">📍 SJDM Safety Heatmap</h2>
-            <span class="badge bg-warning text-dark p-2">Live Feed</span>
-        </div>
-
-        <div class="card border-0 shadow-sm p-2">
-            <div id="map"></div>
-        </div>
-
-        <div class="mt-4 p-3 bg-white rounded shadow-sm">
-            <h5>Legend</h5>
-            <p class="text-muted small">
-                Colors indicate report density in San Jose del Monte. 
-                <strong class="text-danger">Red</strong> = High Density | 
-                <strong class="text-primary">Blue</strong> = Low Density.
-            </p>
-        </div>
+        <h2 class="fw-bold mb-4" style="color: var(--rose-pink);">📍 Incident Heatmap</h2>
+        <div id="map"></div>
     </div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
-
     <script>
-        // Center on San Jose del Monte
         var map = L.map('map').setView([14.8098, 121.0469], 13);
-
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-
-        fetch('/api/incident-data')
-            .then(response => response.json())
-            .then(data => {
-                if (data.length > 0) {
-                    L.heatLayer(data, {
-                        radius: 25,
-                        blur: 15,
-                        maxZoom: 17,
-                        gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'}
-                    }).addTo(map);
-                }
-            });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
+        fetch('/api/incident-data').then(res => res.json()).then(data => {
+            if(data.length > 0) {
+                L.heatLayer(data, {radius: 25, blur: 15, maxZoom: 17, gradient: {0.4: 'blue', 0.65: '#E91E63', 1: 'red'}}).addTo(map);
+            }
+        });
     </script>
 </body>
 </html>
