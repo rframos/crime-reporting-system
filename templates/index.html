@@ -1,64 +1,47 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SafeCity SJDM | Dashboard</title>
+    <title>SafeCity | Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        :root { --rose-pink: #E91E63; --rose-light: #FCE4EC; }
+        body { background-color: var(--rose-light); }
         .main-content { margin-left: 260px; padding: 40px; }
-        .hero-section { background: linear-gradient(135deg, #0038A8, #CE1126); color: white; border-radius: 20px; padding: 40px; margin-bottom: 30px; }
-        .report-card { border-radius: 20px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .report-card { border-radius: 20px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1); background: white; }
+        .btn-rose { background-color: var(--rose-pink); color: white; padding: 15px; font-weight: bold; border-radius: 10px; }
+        .btn-rose:hover { background-color: #C2185B; color: white; }
     </style>
 </head>
-<body class="bg-light">
+<body>
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <div class="hero-section">
-            <h1 class="fw-bold">SafeCity San Jose del Monte</h1>
-            <p class="opacity-75">Your real-time AI-powered safety and incident reporting platform.</p>
-        </div>
+        <h2 class="fw-bold mb-4" style="color: var(--rose-pink);">Incident Submission</h2>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}{% for category, msg in messages %}<div class="alert alert-{{ category }} shadow-sm">{{ msg }}</div>{% endfor %}{% endif %}
+            {% if messages %}{% for category, msg in messages %}<div class="alert alert-{{ category }}">{{ msg }}</div>{% endfor %}{% endif %}
         {% endwith %}
 
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card report-card p-4 h-100">
-                    <h4 class="fw-bold mb-3">🚨 Quick Report</h4>
-                    <p class="text-muted small">Capture a photo of the incident. Our AI will automatically categorize it and notify the nearest authorities based on your GPS.</p>
-                    <form action="/api/incident/report" method="POST" enctype="multipart/form-data">
-                        <div class="mb-4">
-                            <div class="p-4 border border-2 border-dashed rounded text-center bg-light" id="drop-area">
-                                <input type="file" name="file" class="form-control" id="fileInput" required hidden>
-                                <label for="fileInput" class="btn btn-outline-primary mb-2">Select Image</label>
-                                <p class="mb-0 xsmall text-muted" id="file-name">No file chosen</p>
-                            </div>
-                        </div>
-                        <input type="hidden" name="latitude" id="lat"><input type="hidden" name="longitude" id="lng">
-                        <div id="geo-status" class="alert alert-secondary py-2 small">📍 Awaiting GPS...</div>
-                        <button type="submit" class="btn btn-danger btn-lg w-100 fw-bold py-3 shadow">SUBMIT EMERGENCY REPORT</button>
-                    </form>
+        <div class="card report-card p-5 mx-auto" style="max-width: 600px;">
+            <p class="text-muted mb-4">Upload a photo to alert authorities. Our AI will automatically categorize the event and tag your GPS location.</p>
+            <form action="/api/incident/report" method="POST" enctype="multipart/form-data">
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Evidence Photo</label>
+                    <input type="file" name="file" class="form-control form-control-lg" required>
                 </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card report-card p-4 h-100 text-center d-flex flex-column justify-content-center">
-                    <h2 class="text-primary fw-bold">Active Shield</h2>
-                    <p>SJDM is currently being monitored by AI.</p>
-                    <div class="display-4 fw-bold">PROTECTED</div>
-                </div>
-            </div>
+                
+                <input type="hidden" name="latitude" id="lat"><input type="hidden" name="longitude" id="lng">
+                <div id="geo-status" class="alert alert-secondary py-2 small">📍 Tracking Location...</div>
+                
+                <button type="submit" class="btn btn-rose w-100 shadow">SEND EMERGENCY REPORT</button>
+            </form>
         </div>
     </div>
     <script>
-        document.getElementById('fileInput').onchange = function() {
-            document.getElementById('file-name').innerText = this.files[0].name;
-        };
-
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((pos) => {
                 document.getElementById('lat').value = pos.coords.latitude;
                 document.getElementById('lng').value = pos.coords.longitude;
-                document.getElementById('geo-status').innerHTML = "✅ GPS Linked";
+                document.getElementById('geo-status').innerText = "✅ Location Locked";
                 document.getElementById('geo-status').className = "alert alert-success py-2 small";
             });
         }
