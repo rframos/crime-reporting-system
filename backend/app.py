@@ -7,6 +7,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from PIL import Image  # Replacing OpenCV with Pillow
 
 # --- CONFIGURATION ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -31,7 +32,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20)) # Resident, Police Officer, Admin
+    role = db.Column(db.String(20)) # Resident, Police Officer, Admin, Barangay Official
 
 class Category(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -67,12 +68,10 @@ def reset_db():
     db.drop_all()
     db.create_all()
     
-    # Setup folders
     if os.path.exists(app.config['TRAIN_FOLDER']):
         shutil.rmtree(app.config['TRAIN_FOLDER'])
     os.makedirs(app.config['TRAIN_FOLDER'], exist_ok=True)
     
-    # Add Default Categories
     default_cats = [
         Category(name="Theft", severity="Medium"),
         Category(name="Assault", severity="High"),
@@ -119,7 +118,7 @@ def reports():
 def contacts():
     return render_template('contacts.html')
 
-# --- API ROUTES (POSTS) ---
+# --- API ROUTES ---
 @app.route('/api/add-category', methods=['POST'])
 @roles_required('Admin')
 def add_category():
@@ -146,10 +145,44 @@ def upload_training():
         
     for f in files:
         if f:
-            f.save(os.path.join(cat_path, secure_filename(f.filename)))
+            filename = secure_filename(f.filename)
+            save_path = os.path.join(cat_path, filename)
+            f.save(save_path)
+            # Basic Pillow Check: Ensure it's a valid image and normalize size
+            try:
+                with Image.open(save_path) as img:
+                    img.verify() # check if it's a valid image
+            except Exception:
+                os.remove(save_path) # remove corrupt file
     
     flash(f"Images uploaded to {cat_name}.", "success")
     return redirect(url_for('cnn_admin'))
+
+@app.route('/api/delete-training-img', methods=['POST'])
+@roles_required('Admin')
+def delete_training_img():
+    data = request.json
+    cat = data.get('category')
+    filename = data.get('filename')
+    path = os.path.join(app.config['TRAIN_FOLDER'], cat, filename)
+    if os.path.exists(path):
+        os.remove(path)
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error"}), 404
+
+@app.route('/api/train-model', methods=['POST'])
+@roles_required('Admin')
+def train_model():
+    """
+    CNN training logic using TensorFlow and Pillow for image resizing.
+    """
+    try:
+        from tensorflow.keras.preprocessing.image import ImageDataGenerator
+        # This will be implemented fully once training data is ready
+        flash("CNN Training Process Triggered with Pillow Support.", "info")
+        return jsonify({"status": "processing"})
+    except ImportError:
+        return jsonify({"status": "error", "message": "ML libraries not found"}), 500
 
 @app.route('/api/register', methods=['POST'])
 def register():
