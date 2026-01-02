@@ -4,30 +4,35 @@
     <title>SafeCity | Reports</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        :root { --rose-pink: #E91E63; --rose-light: #FCE4EC; }
-        body { background-color: var(--rose-light); }
         .main-content { margin-left: 260px; padding: 40px; }
-        .card { border: none; border-radius: 15px; }
-        .table thead { background-color: var(--rose-pink); color: white; }
+        .card { border-radius: 15px; overflow: hidden; border: none; }
+        .table thead { background: #E91E63; color: white; }
     </style>
 </head>
-<body>
+<body class="bg-light">
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <h2 class="fw-bold mb-4" style="color: var(--rose-pink);">📋 Incident Reports</h2>
-        <div class="card p-4 shadow-sm">
-            <table class="table align-middle table-hover">
-                <thead><tr><th>Time</th><th>Type</th><th>Photo</th><th>Status</th></tr></thead>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold">📋 Incident Reports</h2>
+            <button class="btn btn-dark btn-sm" onclick="location.reload()">Reload Data</button>
+        </div>
+        <div class="card shadow-sm">
+            <table class="table align-middle table-hover mb-0">
+                <thead>
+                    <tr><th>Date</th><th>Type</th><th>Evidence</th><th>AI Confidence</th><th>Status</th></tr>
+                </thead>
                 <tbody>
                     {% for i in incidents %}
                     <tr>
-                        <td class="small text-muted">{{ i.created_at.strftime('%m/%d %H:%M') }}</td>
-                        <td class="fw-bold">{{ i.incident_type }}</td>
+                        <td>{{ i.created_at.strftime('%m/%d %H:%M') }}</td>
+                        <td><strong>{{ i.incident_type }}</strong></td>
                         <td>
-                            {% if i.image_url %}<img src="/static/uploads/{{ i.image_url }}" style="width: 55px; height: 55px; object-fit: cover; border-radius: 8px; cursor: pointer;" onclick="window.open(this.src)">
-                            {% else %}<span class="text-muted small">None</span>{% endif %}
+                            {% if i.image_url %}
+                            <img src="/static/uploads/{{ i.image_url }}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 5px; cursor: pointer;" onclick="window.open(this.src)">
+                            {% else %}None{% endif %}
                         </td>
-                        <td><span class="badge" style="background-color: var(--rose-pink);">{{ i.status }}</span></td>
+                        <td><span class="badge bg-success">{{ i.confidence }}%</span></td>
+                        <td><span class="badge bg-warning text-dark">{{ i.status }}</span></td>
                     </tr>
                     {% endfor %}
                 </tbody>
