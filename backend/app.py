@@ -15,9 +15,8 @@ from werkzeug.utils import secure_filename
 # --- CONFIGURATION ---
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 app = Flask(__name__, root_path=base_dir, template_folder='templates', static_folder='static')
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'sjdm_rose_pink_secure_2026')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'sjdm_rose_pink_2026')
 
-# Database Connection
 db_url = os.environ.get('DATABASE_URL')
 if db_url and db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
@@ -58,8 +57,7 @@ class Incident(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
 @login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
+def load_user(user_id): return User.query.get(int(user_id))
 
 def roles_required(*roles):
     def decorator(f):
@@ -71,7 +69,7 @@ def roles_required(*roles):
         return decorated_function
     return decorator
 
-# --- DATASET BACKUP & RESTORE ---
+# --- ZIP DATASET MANAGEMENT ---
 @app.route('/api/cnn/export-dataset')
 @roles_required('Admin')
 def export_dataset():
@@ -82,7 +80,7 @@ def export_dataset():
                 file_path = os.path.join(root, file)
                 zf.write(file_path, os.path.relpath(file_path, app.config['TRAIN_FOLDER']))
     memory_file.seek(0)
-    return send_file(memory_file, download_name='sjdm_dataset_backup.zip', as_attachment=True)
+    return send_file(memory_file, download_name='sjdm_backup.zip', as_attachment=True)
 
 @app.route('/api/cnn/import-dataset', methods=['POST'])
 @roles_required('Admin')
@@ -91,33 +89,21 @@ def import_dataset():
     if file and file.filename.endswith('.zip'):
         with zipfile.ZipFile(file) as zf:
             zf.extractall(app.config['TRAIN_FOLDER'])
-            # Sync extracted folders into Database Categories
             for d in os.listdir(app.config['TRAIN_FOLDER']):
                 if os.path.isdir(os.path.join(app.config['TRAIN_FOLDER'], d)):
                     if not Category.query.filter_by(name=d).first():
                         db.session.add(Category(name=d, severity="Medium"))
             db.session.commit()
-        flash("Dataset and Categories restored!", "success")
+        flash("Dataset and categories successfully restored!", "success")
     return redirect(url_for('cnn_admin'))
 
-# --- CNN TRAINING ---
+# --- CORE AI ROUTES ---
 @app.route('/api/cnn/train', methods=['POST'])
 @roles_required('Admin')
 def train_model():
     try:
         datagen = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255, validation_split=0.2)
-        train_gen = datagen.flow_from_directory(
-            app.config['TRAIN_FOLDER'], 
-            target_size=(128,128), 
-            batch_size=32, 
-            class_mode='categorical', 
-            subset='training'
-        )
-        
-        if train_gen.samples == 0:
-            flash("Upload training images first!", "danger")
-            return redirect(url_for('cnn_admin'))
-
+        train_gen = datagen.flow_from_directory(app.config['TRAIN_FOLDER'], target_size=(128,128), batch_size=32, class_mode='categorical', subset='training')
         model = tf.keras.Sequential([
             tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(128,128,3)),
             tf.keras.layers.MaxPooling2D(2,2),
@@ -127,40 +113,8 @@ def train_model():
         model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
         model.fit(train_gen, epochs=5)
         model.save(app.config['MODEL_PATH'])
-        flash("AI Model trained successfully!", "success")
-    except Exception as e: 
-        flash(f"Training failed: {str(e)}", "danger")
-    return redirect(url_for('cnn_admin'))
-
-# --- NAVIGATION & DASHBOARD ---
-@app.route('/')
-@login_required
-def index():
-    return render_template('index.html')
-
-@app.route('/cnn-admin')
-@roles_required('Admin')
-def cnn_admin():
-    categories = Category.query.all()
-    dataset = {}
-    for cat in categories:
-        path = os.path.join(app.config['TRAIN_FOLDER'], cat.name)
-        if not os.path.exists(path): os.makedirs(path, exist_ok=True)
-        dataset[cat.name] = os.listdir(path)
-    return render_template('cnn_admin.html', categories=categories, dataset=dataset)
-
-@app.route('/api/cnn/upload', methods=['POST'])
-@roles_required('Admin')
-def upload_training_images():
-    cat = request.form.get('category')
-    files = request.files.getlist('files') # Supports multiple files
-    if files and cat:
-        target_dir = os.path.join(app.config['TRAIN_FOLDER'], cat)
-        os.makedirs(target_dir, exist_ok=True)
-        for file in files:
-            if file.filename:
-                file.save(os.path.join(target_dir, secure_filename(file.filename)))
-        flash(f"Uploaded {len(files)} images to {cat}", "success")
+        flash("CNN Model updated successfully!", "success")
+    except Exception as e: flash(str(e), "danger")
     return redirect(url_for('cnn_admin'))
 
 @app.route('/api/incident/report', methods=['POST'])
@@ -169,11 +123,11 @@ def report_incident():
     file = request.files.get('file')
     lat, lng = request.form.get('latitude'), request.form.get('longitude')
     if file:
-        filename = secure_filename(f"{datetime.datetime.now().timestamp()}_{file.filename}")
+        filename = secure_filename(f"{datetime.now().timestamp()}_{file.filename}")
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Classification
+        # Predictive Analysis
         ptype = "Unclassified"
         if os.path.exists(app.config['MODEL_PATH']):
             model = tf.keras.models.load_model(app.config['MODEL_PATH'])
@@ -188,24 +142,57 @@ def report_incident():
         flash(f"Incident reported: {ptype}", "success")
     return redirect(url_for('index'))
 
-# Standard Auth Routes
-@app.route('/api/register', methods=['POST'])
-def register():
-    u, p, r = request.form.get('username'), request.form.get('password'), request.form.get('role')
-    db.session.add(User(username=u, password=generate_password_hash(p), role=r))
-    db.session.commit(); return redirect(url_for('login_page'))
+@app.route('/api/incident-data')
+def incident_data():
+    incidents = Incident.query.all()
+    return jsonify([[i.latitude, i.longitude, 0.8] for i in incidents if i.latitude])
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    user = User.query.filter_by(username=request.form.get('username')).first()
-    if user and check_password_hash(user.password, request.form.get('password')):
-        login_user(user); return redirect(url_for('index'))
-    return redirect(url_for('login_page'))
+# --- VIEW ROUTES ---
+@app.route('/')
+@login_required
+def index(): return render_template('index.html')
 
+@app.route('/heatmap')
+@login_required
+def heatmap(): return render_template('heatmap.html')
+
+@app.route('/reports')
+@login_required
+def reports():
+    incidents = Incident.query.order_by(Incident.created_at.desc()).all()
+    return render_template('reports.html', incidents=incidents)
+
+@app.route('/cnn-admin')
+@roles_required('Admin')
+def cnn_admin():
+    categories = Category.query.all()
+    dataset = {cat.name: os.listdir(os.path.join(app.config['TRAIN_FOLDER'], cat.name)) for cat in categories}
+    return render_template('cnn_admin.html', categories=categories, dataset=dataset)
+
+@app.route('/api/cnn/upload', methods=['POST'])
+@roles_required('Admin')
+def upload_training_images():
+    cat = request.form.get('category')
+    files = request.files.getlist('files')
+    if files and cat:
+        target_dir = os.path.join(app.config['TRAIN_FOLDER'], cat)
+        for file in files:
+            if file.filename: file.save(os.path.join(target_dir, secure_filename(file.filename)))
+        flash(f"Uploaded {len(files)} images to {cat}", "success")
+    return redirect(url_for('cnn_admin'))
+
+# Registration, Login, and Auth (Same as previous, ensure logic is correct)
 @app.route('/login')
 def login_page(): return render_template('login.html')
 @app.route('/register')
 def register_page(): return render_template('register.html')
+@app.route('/api/login', methods=['POST'])
+def login():
+    u, p = request.form.get('username'), request.form.get('password')
+    user = User.query.filter_by(username=u).first()
+    if user and check_password_hash(user.password, p):
+        login_user(user); return redirect(url_for('index'))
+    return redirect(url_for('login_page'))
 @app.route('/logout')
 def logout(): logout_user(); return redirect(url_for('login_page'))
 
