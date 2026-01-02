@@ -8,14 +8,17 @@
 <body class="bg-light">
     {% include 'sidebar.html' %}
     <div class="main-content">
-        <h2 class="fw-bold mb-4">CNN Intelligence Management</h2>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="fw-bold">CNN Intelligence Management</h2>
+            <form action="/api/cnn/train" method="POST">
+                <button class="btn btn-success fw-bold shadow-sm">🚀 Start AI Training</button>
+            </form>
+        </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
+            {% if messages %}{% for category, msg in messages %}
+                <div class="alert alert-{{ category }}">{{ msg }}</div>
+            {% endfor %}{% endif %}
         {% endwith %}
 
         <div class="row">
@@ -25,11 +28,9 @@
                     <form action="/api/cnn/add-category" method="POST">
                         <input type="text" name="name" class="form-control mb-2" placeholder="Category Name" required>
                         <select name="severity" class="form-select mb-2">
-                            <option value="Low">Low</option>
-                            <option value="Medium">Medium</option>
-                            <option value="High">High</option>
+                            <option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option>
                         </select>
-                        <button class="btn btn-primary w-100">Create Category</button>
+                        <button class="btn btn-primary w-100">Create</button>
                     </form>
                 </div>
             </div>
@@ -39,19 +40,11 @@
                     <h5 class="fw-bold">Upload Training Images</h5>
                     <form action="/api/cnn/upload" method="POST" enctype="multipart/form-data">
                         <div class="row">
-                            <div class="col">
-                                <select name="category" class="form-select" required>
-                                    {% for cat in categories %}
-                                    <option value="{{ cat.name }}">{{ cat.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col">
-                                <input type="file" name="file" class="form-control" required>
-                            </div>
-                            <div class="col-auto">
-                                <button class="btn btn-dark">Upload</button>
-                            </div>
+                            <div class="col"><select name="category" class="form-select">
+                                {% for cat in categories %}<option value="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
+                            </select></div>
+                            <div class="col"><input type="file" name="file" class="form-control" required></div>
+                            <div class="col-auto"><button class="btn btn-dark">Upload</button></div>
                         </div>
                     </form>
                 </div>
@@ -61,15 +54,14 @@
         <h4 class="fw-bold mt-4">Current Dataset</h4>
         {% for cat_name, images in dataset.items() %}
         <div class="card border-0 shadow-sm p-3 mb-3">
-            <h6 class="fw-bold text-primary">{{ cat_name }} ({{ images|length }} images)</h6>
+            <h6 class="fw-bold text-primary">{{ cat_name }} ({{ images|length }})</h6>
             <div class="d-flex flex-wrap gap-2">
                 {% for img in images %}
                 <div class="position-relative">
                     <img src="/static/training_data/{{ cat_name }}/{{ img }}" class="img-card shadow-sm">
-                    <form action="/api/cnn/delete-image" method="POST" style="position: absolute; top: 2px; right: 2px;">
-                        <input type="hidden" name="category" value="{{ cat_name }}">
-                        <input type="hidden" name="filename" value="{{ img }}">
-                        <button class="btn btn-danger btn-sm p-0 px-1" style="font-size: 10px;">&times;</button>
+                    <form action="/api/cnn/delete-image" method="POST" class="position-absolute top-0 end-0">
+                        <input type="hidden" name="category" value="{{ cat_name }}"><input type="hidden" name="filename" value="{{ img }}">
+                        <button class="btn btn-danger btn-sm px-1 py-0">&times;</button>
                     </form>
                 </div>
                 {% endfor %}
