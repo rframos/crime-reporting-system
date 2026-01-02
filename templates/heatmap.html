@@ -6,45 +6,27 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        :root { --rose-pink: #E91E63; --rose-light: #FCE4EC; }
-        body { background-color: var(--rose-light); }
+        :root { --rose-pink: #E91E63; }
         .main-content { margin-left: 260px; padding: 40px; }
-        #map { height: 70vh; width: 100%; border-radius: 20px; box-shadow: 0 8px 25px rgba(0,0,0,0.1); border: 5px solid white; }
-        .legend { background: white; padding: 15px; border-radius: 10px; margin-top: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        #map { height: 75vh; border-radius: 20px; border: 5px solid white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
     </style>
 </head>
-<body>
+<body class="bg-light">
     {% include 'sidebar.html' %}
     <div class="main-content">
         <h2 class="fw-bold mb-4" style="color: var(--rose-pink);">📍 Incident Heatmap</h2>
         <div id="map"></div>
-        
-        <div class="legend">
-            <h6 class="fw-bold" style="color: var(--rose-pink);">Intensity Guide</h6>
-            <div class="d-flex align-items-center gap-3">
-                <span class="small"><strong style="color: blue;">Blue</strong>: Isolated</span>
-                <span class="small"><strong style="color: #E91E63;">Pink</strong>: Moderate</span>
-                <span class="small"><strong style="color: red;">Red</strong>: High Density</span>
-            </div>
-        </div>
     </div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
     <script>
         var map = L.map('map').setView([14.8098, 121.0469], 13);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
-
-        fetch('/api/incident-data')
-            .then(res => res.json())
-            .then(data => {
-                if (data.length > 0) {
-                    L.heatLayer(data, {
-                        radius: 25, blur: 15, maxZoom: 17,
-                        gradient: {0.4: 'blue', 0.65: '#E91E63', 1: 'red'}
-                    }).addTo(map);
-                }
-            });
+        fetch('/api/incident-data').then(res => res.json()).then(data => {
+            if(data.length > 0) {
+                L.heatLayer(data, {radius: 25, blur: 15, maxZoom: 17, gradient: {0.4: 'blue', 0.65: '#E91E63', 1: 'red'}}).addTo(map);
+            }
+        });
     </script>
 </body>
 </html>
