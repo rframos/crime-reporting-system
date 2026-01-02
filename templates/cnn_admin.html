@@ -6,16 +6,15 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .main-content { margin-left: 260px; padding: 40px; }
-        .img-card { position: relative; width: 100px; height: 100px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
-        .img-card img { width: 100%; height: 100%; object-fit: cover; }
-        .del-btn { position: absolute; top: 2px; right: 2px; background: red; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; }
+        .img-viewer { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
+        .img-box { position: relative; width: 100px; height: 100px; border: 1px solid #ddd; border-radius: 5px; overflow: hidden; }
+        .img-box img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+        .del-badge { position: absolute; top: 2px; right: 2px; background: rgba(255,0,0,0.8); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; line-height: 20px; text-align: center; cursor: pointer; }
         .sjdm-blue { color: #0038A8; }
-        .sjdm-yellow { background-color: #FFD700; }
     </style>
 </head>
 <body class="bg-light">
     {% include 'sidebar.html' %}
-
     <div class="main-content">
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
@@ -29,55 +28,46 @@
         {% endwith %}
 
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2 class="fw-bold sjdm-blue">⚙️ CNN Intelligence Management</h2>
-            <button class="btn btn-dark" onclick="alert('Proceeding to Model Training logic...')">🚀 Generate CNN Model (.h5)</button>
+            <h2 class="fw-bold sjdm-blue">CNN Intelligence Management</h2>
+            <button class="btn btn-dark fw-bold" onclick="startTraining()">🚀 Produce CNN Model (.h5)</button>
         </div>
 
         <div class="row">
             <div class="col-md-4">
-                <div class="card p-4 shadow-sm border-0 mb-4">
-                    <h5 class="fw-bold mb-3">Add Incident Category</h5>
+                <div class="card p-4 border-0 shadow-sm mb-4">
+                    <h5 class="fw-bold">New Category</h5>
                     <form action="/api/add-category" method="POST">
-                        <div class="mb-3">
-                            <label class="small fw-bold">Category Name</label>
-                            <input type="text" name="name" class="form-control" placeholder="e.g. Illegal Dumping" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="small fw-bold">Default Severity</label>
-                            <select name="severity" class="form-select">
-                                <option value="Low">Low</option>
-                                <option value="Medium">Medium</option>
-                                <option value="High">High</option>
-                                <option value="Critical">Critical</option>
-                            </select>
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100">Create Folder & Category</button>
+                        <input type="text" name="name" class="form-control mb-2" placeholder="e.g. Illegal Fire" required>
+                        <select name="severity" class="form-select mb-3">
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                        </select>
+                        <button class="btn btn-primary w-100">Create Folder</button>
                     </form>
                 </div>
             </div>
 
             <div class="col-md-8">
                 {% for cat in categories %}
-                <div class="card p-4 shadow-sm border-0 mb-4">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h6 class="fw-bold mb-0 sjdm-blue">{{ cat.name }} <span class="badge bg-secondary">{{ cat.severity }}</span></h6>
-                        
+                <div class="card p-4 border-0 shadow-sm mb-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="fw-bold mb-0 text-uppercase">{{ cat.name }} <span class="badge bg-info text-dark ms-2">{{ dataset[cat.name]|length }} Images</span></h6>
                         <form action="/api/upload-training" method="POST" enctype="multipart/form-data" class="d-flex gap-2">
                             <input type="hidden" name="category" value="{{ cat.name }}">
                             <input type="file" name="images" class="form-control form-control-sm" multiple required>
-                            <button type="submit" class="btn btn-sm btn-success">Upload</button>
+                            <button class="btn btn-sm btn-success">Upload</button>
                         </form>
                     </div>
-
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="img-viewer">
                         {% for img in dataset[cat.name] %}
-                        <div class="img-card" id="img-{{ cat.id }}-{{ loop.index }}">
+                        <div class="img-box" id="box-{{ loop.index }}-{{ cat.id }}">
                             <img src="/static/training_data/{{ cat.name }}/{{ img }}" onclick="window.open(this.src)">
-                            <button class="del-btn" onclick="deleteImage('{{ cat.name }}', '{{ img }}', 'img-{{ cat.id }}-{{ loop.index }}')">✕</button>
+                            <button class="del-badge" onclick="deleteImg('{{ cat.name }}', '{{ img }}', 'box-{{ loop.index }}-{{ cat.id }}')">✕</button>
                         </div>
                         {% endfor %}
                         {% if not dataset[cat.name] %}
-                            <p class="text-muted small italic">No images for training. Please upload some.</p>
+                            <p class="text-muted small mt-2">No training images yet.</p>
                         {% endif %}
                     </div>
                 </div>
@@ -86,16 +76,20 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        async function deleteImage(cat, filename, divId) {
-            if(!confirm("Remove this image?")) return;
+        async function deleteImg(cat, filename, divId) {
+            if(!confirm("Remove this image from training dataset?")) return;
             const res = await fetch('/api/delete-training-img', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({category: cat, filename: filename})
             });
             if(res.ok) document.getElementById(divId).remove();
+        }
+
+        async function startTraining() {
+            const res = await fetch('/api/train-model', {method: 'POST'});
+            if(res.ok) alert("Training process triggered. Please wait while the model is being generated.");
         }
     </script>
 </body>
