@@ -1,62 +1,56 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SafeCity | Map</title>
+    <title>SafeCity SJDM | Report</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>.main-content { margin-left: 260px; padding: 40px; } #map { height: 500px; border-radius: 15px; }</style>
+    <style>.main-content { margin-left: 260px; padding: 40px; } .report-card { border-radius: 20px; border: none; overflow: hidden; }</style>
 </head>
 <body class="bg-light">
     {% include 'sidebar.html' %}
     <div class="main-content">
         <h2 class="fw-bold mb-4">Report an Incident</h2>
-        
-        <div id="notif" class="alert alert-success d-none shadow" style="position: fixed; top: 20px; right: 20px; z-index: 2000;">
-            ✅ Report submitted! Officials have been notified.
-        </div>
 
-        <div class="row">
-            <div class="col-lg-8"><div id="map"></div></div>
-            <div class="col-lg-4">
-                <div class="card p-4 shadow-sm border-0">
-                    <form id="reportForm">
-                        <input type="hidden" id="lat" name="lat">
-                        <input type="hidden" id="lng" name="lng">
-                        <div class="mb-3"><label>Evidence Photo</label><input type="file" name="image" class="form-control" required></div>
-                        <div class="mb-3">
-                            <label>Type</label>
-                            <select name="type" class="form-select">
-                                {% for c in categories %}<option value="{{c.name}}">{{c.name}}</option>{% endfor %}
-                            </select>
-                        </div>
-                        <button class="btn btn-primary w-100" id="subBtn">Submit Report</button>
-                    </form>
-                </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}{% for category, msg in messages %}
+                <div class="alert alert-{{ category }}">{{ msg }}</div>
+            {% endfor %}{% endif %}
+        {% endwith %}
+
+        <div class="card report-card shadow-lg mx-auto" style="max-width: 600px;">
+            <div class="bg-primary p-4 text-white text-center">
+                <h4 class="mb-0">Emergency Submission</h4>
+                <small>Upload a photo and AI will identify the incident.</small>
+            </div>
+            <div class="card-body p-4">
+                <form action="/api/incident/report" method="POST" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Incident Photo</label>
+                        <input type="file" name="file" class="form-control" required>
+                    </div>
+                    
+                    <input type="hidden" name="latitude" id="lat">
+                    <input type="hidden" name="longitude" id="lng">
+
+                    <div id="geo-status" class="alert alert-info py-2 small">📡 Capturing your location...</div>
+
+                    <button type="submit" class="btn btn-danger btn-lg w-100 fw-bold">SUBMIT REPORT</button>
+                </form>
             </div>
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        const map = L.map('map').setView([14.8087, 121.0450], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        let marker;
-        map.on('click', e => { 
-            if(marker) map.removeLayer(marker); 
-            marker = L.marker(e.latlng).addTo(map);
-            document.getElementById('lat').value = e.latlng.lat;
-            document.getElementById('lng').value = e.latlng.lng;
-        });
-
-        document.getElementById('reportForm').onsubmit = async e => {
-            e.preventDefault();
-            const res = await fetch('/api/report', {method:'POST', body: new FormData(e.target)});
-            if(res.ok) {
-                const notif = document.getElementById('notif');
-                notif.classList.remove('d-none');
-                setTimeout(() => notif.classList.add('d-none'), 4000);
-            }
-        };
+        // Automatic Geolocation capture
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                document.getElementById('lat').value = pos.coords.latitude;
+                document.getElementById('lng').value = pos.coords.longitude;
+                document.getElementById('geo-status').innerHTML = "✅ Location captured!";
+                document.getElementById('geo-status').className = "alert alert-success py-2 small";
+            }, () => {
+                document.getElementById('geo-status').innerHTML = "⚠️ Location access denied. Manual input needed.";
+            });
+        }
     </script>
 </body>
 </html>
