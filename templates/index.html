@@ -1,38 +1,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SafeCity SJDM | Dashboard</title>
+    <title>SafeCity SJDM | Home</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root { --rose-pink: #E91E63; --rose-light: #FCE4EC; }
         body { background-color: var(--rose-light); }
-        .main-content { margin-left: 260px; padding: 40px; }
-        .report-card { border-radius: 20px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1); background: white; text-align: center; }
-        .btn-rose { background-color: var(--rose-pink); color: white; padding: 15px; font-weight: bold; border-radius: 12px; }
-        .btn-rose:hover { background-color: #C2185B; color: white; }
+        .main-content { margin-left: 260px; padding: 40px; text-align: center; }
+        .report-card { border-radius: 20px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1); background: white; margin-top: 50px; }
+        .btn-rose { background-color: var(--rose-pink); color: white; padding: 15px; font-weight: bold; }
     </style>
 </head>
 <body>
     {% include 'sidebar.html' %}
     <div class="main-content d-flex flex-column align-items-center">
-        <h2 class="fw-bold mb-4" style="color: var(--rose-pink);">Submit Incident Report</h2>
-
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}{% for category, msg in messages %}<div class="alert alert-{{ category }} w-100" style="max-width: 600px;">{{ msg }}</div>{% endfor %}{% endif %}
-        {% endwith %}
-
+        <h2 class="fw-bold mb-4" style="color: var(--rose-pink);">Incident Submission</h2>
         <div class="card report-card p-5 w-100" style="max-width: 600px;">
-            <p class="text-muted">Upload a photo to alert emergency responders. Your location will be tagged automatically for faster response times.</p>
+            <p class="text-muted mb-4">Upload an evidence photo to alert authorities. Our AI automatically classifies the incident and tags your GPS coordinates.</p>
             <form action="/api/incident/report" method="POST" enctype="multipart/form-data">
                 <div class="mb-4 text-start">
-                    <label class="form-label fw-bold">Select Photo Evidence</label>
+                    <label class="form-label fw-bold">Evidence Photo</label>
                     <input type="file" name="file" class="form-control form-control-lg" required>
                 </div>
-                
                 <input type="hidden" name="latitude" id="lat"><input type="hidden" name="longitude" id="lng">
-                <div id="geo-status" class="alert alert-secondary py-2 small mb-4">📍 Locating Device...</div>
-                
-                <button type="submit" class="btn btn-rose w-100 shadow-sm">SEND EMERGENCY ALERT</button>
+                <div id="geo-status" class="alert alert-secondary py-2 small mb-4">📍 Waiting for GPS...</div>
+                <button type="submit" class="btn btn-rose w-100 shadow">SUBMIT REPORT</button>
             </form>
         </div>
     </div>
